@@ -9,7 +9,7 @@ from urllib.parse import quote
 import httpx
 
 from .errors import DockError
-from .models import DockInfo, ExecResult, Operation
+from .models import DockInfo, DockState, ExecResult, Operation
 
 DEFAULT_BASE_URL = "https://api.usedock.io"
 
@@ -25,9 +25,22 @@ def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
 
+class _Unset:
+    def __repr__(self) -> str:
+        return "UNSET"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+UNSET: Any = _Unset()
+"""Default for arguments where ``None`` is meaningful: omit the field. Pass ``None`` to send
+JSON ``null`` (``update(ttl_seconds=None)`` turns auto-stop off)."""
+
+
 def _body(**fields: Any) -> Dict[str, Any]:
-    """Drop unset (None) fields; absent args are omitted, never sent as null."""
-    return {k: v for k, v in fields.items() if v is not None}
+    """Drop unset (None or UNSET) fields; absent args are omitted, never sent as null."""
+    return {k: v for k, v in fields.items() if v is not None and v is not UNSET}
 
 
 def _seg(value: str) -> str:
@@ -169,18 +182,15 @@ class Docks:
         cpus: Optional[int] = None,
         memory_mib: Optional[int] = None,
         disk_gib: Optional[int] = None,
-        ttl_seconds: Optional[int] = None,
+        ttl_seconds: Optional[int] = UNSET,
     ) -> DockInfo:
         data = self._c._request(
             "PATCH",
             f"/v1/docks/{_seg(dock_id)}",
-            body=_body(
-                name=name,
-                cpus=cpus,
-                memoryMiB=memory_mib,
-                diskGiB=disk_gib,
-                ttlSeconds=ttl_seconds,
-            ),
+            body={
+                **_body(name=name, cpus=cpus, memoryMiB=memory_mib, diskGiB=disk_gib),
+                **({} if ttl_seconds is UNSET else {"ttlSeconds": ttl_seconds}),
+            },
         )
         return DockInfo.from_dict(data)
 
@@ -192,6 +202,7 @@ class Docks:
         timeout_seconds: Optional[int] = None,
         env: Optional[Mapping[str, str]] = None,
         cwd: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> ExecResult:
         data = self._c._request(
             "POST",
@@ -202,12 +213,13 @@ class Docks:
                 env=dict(env) if env is not None else None,
                 cwd=cwd,
             ),
+            headers={"idempotency-key": idempotency_key} if idempotency_key else None,
         )
         return ExecResult.from_dict(data)
 
-    def stop(self, dock_id: str, *, force: Optional[bool] = None) -> DockInfo:
+    def stop(self, dock_id: str, *, force: Optional[bool] = None) -> DockState:
         data = self._c._request("POST", f"/v1/docks/{_seg(dock_id)}/stop", body=_body(force=force))
-        return DockInfo.from_dict(data)
+        return DockState.from_dict(data)
 
     def resume(
         self,
@@ -219,7 +231,7 @@ class Docks:
         ttl_seconds: Optional[int] = None,
         environment: Optional[str] = None,
         no_env: Optional[bool] = None,
-    ) -> DockInfo:
+    ) -> DockState:
         data = self._c._request(
             "POST",
             f"/v1/docks/{_seg(dock_id)}/resume",
@@ -232,7 +244,7 @@ class Docks:
                 noEnv=no_env,
             ),
         )
-        return DockInfo.from_dict(data)
+        return DockState.from_dict(data)
 
     def branch(
         self,
@@ -310,9 +322,18 @@ class Files:
         self._run(dock_id, command, f"write {path}")
         return path
 
-    def read(self, dock_id: str, path: str) -> str:
+    def read_bytes(self, dock_id: str, path: str) -> bytes:
         result = self._run(dock_id, f"base64 -w0 -- {shell_quote(path)}", f"read {path}")
-        return base64.b64decode(result.stdout).decode("utf-8")
+        return base64.b64decode(result.stdout)
+
+    def read(self, dock_id: str, path: str) -> str:
+        raw = self.read_bytes(dock_id, path)
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise DockError(
+                "file_not_utf8", 0, f"read {path}: not valid UTF-8; use read_bytes"
+            ) from exc
 
     def list(self, dock_id: str, path: str) -> List[str]:
         result = self._run(dock_id, f"ls -1A -- {shell_quote(path)}", f"list {path}")

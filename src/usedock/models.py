@@ -53,6 +53,19 @@ class DockInfo:
 
 
 @dataclass
+class DockState:
+    """The ``{id, state}`` answer of ``stop`` and ``resume``; the response is in ``raw``."""
+
+    id: str
+    state: str
+    raw: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> DockState:
+        return cls(id=_str(data, "id"), state=_str(data, "state"), raw=data)
+
+
+@dataclass
 class ExecResult:
     exit_code: int
     stdout: str
