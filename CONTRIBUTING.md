@@ -14,7 +14,7 @@ Every contributor signs the [Dock CLA](https://github.com/usedock/dock/blob/8327
 
 ## Development
 
-These notes apply once the code lands. The SDK is written by hand. Names follow the shared vocabulary (`Dock.create`, `dock.exec`, `dock.branch`) and only public routes are exposed. A shared scenario suite (create, exec, stop, resume, branch, delete) against a real control plane is planned; once it exists, every change runs it.
+Set up with `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`, then run `ruff check . && ruff format --check . && mypy && pytest`. The SDK is written by hand and only exposes public routes. Every change runs the shared scenario suite from usedock/dock (`sdk-scenarios/`, pinned in `SCENARIOS_REF`; point `DOCK_SCENARIOS_DIR` at a checkout). When a scenario changes upstream, bump `SCENARIOS_REF` in the same pull request.
 
 ## Pull requests
 

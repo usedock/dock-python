@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - name: Unit tests
+        run: pytest tests/test_client.py
+      - name: Read pinned scenarios ref
+        id: ref
+        run: echo "sha=$(tr -d '[:space:]' < SCENARIOS_REF)" >> "$GITHUB_OUTPUT"
+      - name: Check out shared scenarios
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: usedock/dock
+          ref: ${{ steps.ref.outputs.sha }}
+          path: dock
+          sparse-checkout: sdk-scenarios
+      - name: Scenario tests (offline)
+        env:
+          DOCK_SCENARIOS_DIR: ${{ github.workspace }}/dock/sdk-scenarios
+        run: pytest tests/test_scenarios.py -rs
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --no-banner --redact
