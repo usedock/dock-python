@@ -1,11 +1,17 @@
 import base64
+import copy
 import json
+import os
+import pickle
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple
 
 import httpx
 import pytest
 
-from usedock import MAX_WRITE_BYTES, Dock, DockError
+from usedock import MAX_WRITE_BYTES, UNSET, Dock, DockError, DockState
 from usedock.client import MAX_COMMAND_BYTES, shell_quote
 
 DOCK = {"id": "d1", "name": "n", "state": "ready", "cpus": 2, "extraUnknown": {"a": 1}}
@@ -285,3 +291,77 @@ def test_files_truncated_output_is_error() -> None:
     client2, _ = recorder(exec_ok("a\nb\n", truncated=True))
     with pytest.raises(DockError):
         client2.docks.files.list("d1", "/d")
+
+
+def test_update_ttl_null_unset_and_value() -> None:
+    client, seen = recorder(ok(DOCK))
+    client.docks.update("d1", name="x")
+    client.docks.update("d1", ttl_seconds=None)
+    client.docks.update("d1", ttl_seconds=UNSET)
+    client.docks.update("d1", ttl_seconds=300)
+    assert [body_of(r) for r in seen] == [
+        {"name": "x"},
+        {"ttlSeconds": None},
+        {},
+        {"ttlSeconds": 300},
+    ]
+    assert b'"ttlSeconds":null' in seen[1].content.replace(b" ", b"")
+
+
+def test_unset_survives_copy_and_pickle() -> None:
+    assert repr(UNSET) == "UNSET" and not UNSET
+    assert copy.copy(UNSET) is UNSET
+    assert copy.deepcopy(UNSET) is UNSET
+    assert pickle.loads(pickle.dumps(UNSET)) is UNSET
+    client, seen = recorder(ok(DOCK))
+    client.docks.update("d1", **copy.deepcopy({"name": "x", "ttl_seconds": UNSET}))
+    assert body_of(seen[0]) == {"name": "x"}
+
+
+def test_stop_resume_return_dock_state() -> None:
+    client, _ = recorder(ok({"id": "d1", "state": "stopping", "extra": 1}, 202))
+    for result in (client.docks.stop("d1"), client.docks.resume("d1")):
+        assert isinstance(result, DockState)
+        assert (result.id, result.state, result.raw["extra"]) == ("d1", "stopping", 1)
+
+
+def test_exec_idempotency_key_header() -> None:
+    client, seen = recorder(exec_ok("x"))
+    client.docks.exec("d1", "true", idempotency_key="k1")
+    client.docks.exec("d1", "true")
+    assert seen[0].headers["idempotency-key"] == "k1"
+    assert "idempotency-key" not in seen[1].headers
+    assert body_of(seen[0]) == {"command": "true"}
+
+
+def test_files_read_bytes_and_non_utf8() -> None:
+    blob = b"\xff\xfe\x00binary"
+    enc = base64.b64encode(blob).decode()
+    client, seen = recorder(exec_ok(enc))
+    assert client.docks.files.read_bytes("d1", "/b") == blob
+    assert body_of(seen[0])["command"] == "base64 -w0 -- '/b'"
+    with pytest.raises(DockError) as info:
+        client.docks.files.read("d1", "/b")
+    assert (info.value.code, info.value.status) == ("file_not_utf8", 0)
+
+
+def _run_scenarios(required: bool, tmp_path: Path) -> "subprocess.CompletedProcess[str]":
+    env = {k: v for k, v in os.environ.items() if not k.startswith("DOCK_")}
+    env["DOCK_SCENARIOS_DIR"] = str(tmp_path / "missing")
+    if required:
+        env["DOCK_SCENARIOS_REQUIRED"] = "1"
+    scenarios = Path(__file__).with_name("test_scenarios.py")
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", str(scenarios), "-q", "-p", "no:cacheprovider"],
+        env=env,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+
+
+def test_missing_scenarios_skip_by_default_but_fail_when_required(tmp_path: Path) -> None:
+    default = _run_scenarios(False, tmp_path)
+    assert default.returncode == 0 and "skipped" in default.stdout
+    required = _run_scenarios(True, tmp_path)
+    assert required.returncode != 0 and "DOCK_SCENARIOS_REQUIRED" in required.stdout

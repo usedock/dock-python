@@ -38,6 +38,7 @@ jobs:
       - name: Scenario tests (offline)
         env:
           DOCK_SCENARIOS_DIR: ${{ github.workspace }}/dock/sdk-scenarios
+          DOCK_SCENARIOS_REQUIRED: "1"
         run: pytest tests/test_scenarios.py -rs
 
   gitleaks:

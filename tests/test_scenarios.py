@@ -234,6 +234,8 @@ def names() -> List[str]:
 @pytest.fixture(scope="module")
 def suite() -> Iterator[Tuple[Dict[str, Any], Dict[str, Any]]]:
     if not HAVE_SCENARIOS:
+        if os.environ.get("DOCK_SCENARIOS_REQUIRED") == "1":
+            pytest.fail(f"sdk-scenarios not found at {SCENARIOS_DIR} (DOCK_SCENARIOS_REQUIRED=1)")
         pytest.skip(f"sdk-scenarios not found at {SCENARIOS_DIR}; set DOCK_SCENARIOS_DIR")
     ops, schema, _ = load()
     yield ops, schema

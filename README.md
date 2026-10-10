@@ -35,17 +35,26 @@ with Dock() as client:  # reads DOCK_API_KEY and DOCK_API_URL
 ```
 
 Methods on `client.docks`: `create`, `list`, `get`, `update`, `exec`, `stop`,
-`resume`, `branch`, `delete`, and `files.write` / `files.read` / `files.list`.
+`resume`, `branch`, `delete`, and `files.write` / `files.read` / `files.read_bytes` / `files.list`.
 `client.operations.get(id)` polls an operation. Create, stop, resume and branch
 return when the change is done. Sizes use `cpus`, `memory_mib`, `disk_gib`.
 
-Results are dataclasses (`DockInfo`, `ExecResult`, `Operation`). Only `id`,
-`name` and `state` are relied on; unknown response fields are kept in `.raw`.
+Results are dataclasses (`DockInfo`, `DockState`, `ExecResult`, `Operation`).
+`create`, `get`, `list`, `update` and `branch` return `DockInfo`, where only `id`,
+`name` and `state` are relied on. `stop` and `resume` return `DockState`
+(`id`, `state`), because the API answers them with just those two fields.
+Unknown response fields are kept in `.raw`.
+
+Omitted arguments are not sent. `update(ttl_seconds=None)` sends JSON `null` to
+turn auto-stop off; leave it out (the default, `usedock.UNSET`) to keep the
+current value. `resume` does not take this: the API ignores `ttl_seconds` on
+resume today. `exec`, like `create` and `branch`, accepts `idempotency_key=`.
 
 The API has no file routes, so `files.*` run one `exec` call: content travels
 as base64, paths are single-quoted, and one write must fit the API's 64 KB
 command limit: about 48 KB of content minus the path (`ValueError` above that).
-A non-zero exit raises `DockError` with code `file_command_failed`; output the
+`files.read` decodes UTF-8 and raises `DockError` with code `file_not_utf8` for
+anything else; use `files.read_bytes` for binary files. A non-zero exit raises `DockError` with code `file_command_failed`; output the
 API clipped at 1 MiB (a read of a file over about 768 KB) raises `DockError`
 with code `output_truncated` instead of returning partial content.
 
@@ -83,7 +92,8 @@ ruff check . && ruff format --check . && mypy && pytest
 The client is checked against the shared scenario suite in
 [usedock/dock `sdk-scenarios/`](https://github.com/usedock/dock/tree/main/sdk-scenarios),
 pinned by commit in `SCENARIOS_REF`. Tests read it from `DOCK_SCENARIOS_DIR`
-(default `../dock/sdk-scenarios`) and skip with a reason when it is absent.
+(default `../dock/sdk-scenarios`) and skip with a reason when it is absent; with `DOCK_SCENARIOS_REQUIRED=1`
+(set in CI) a missing suite fails instead.
 Offline mode replays the recorded fixtures against a local fake server. Set
 `DOCK_API_URL`, `DOCK_API_KEY` and `DOCK_WORKSPACE_ID` to also run every
 scenario against a real control plane (use a throwaway workspace; scenarios
