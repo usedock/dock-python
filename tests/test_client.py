@@ -1,6 +1,8 @@
 import base64
+import copy
 import json
 import os
+import pickle
 import subprocess
 import sys
 from pathlib import Path
@@ -304,6 +306,16 @@ def test_update_ttl_null_unset_and_value() -> None:
         {"ttlSeconds": 300},
     ]
     assert b'"ttlSeconds":null' in seen[1].content.replace(b" ", b"")
+
+
+def test_unset_survives_copy_and_pickle() -> None:
+    assert repr(UNSET) == "UNSET" and not UNSET
+    assert copy.copy(UNSET) is UNSET
+    assert copy.deepcopy(UNSET) is UNSET
+    assert pickle.loads(pickle.dumps(UNSET)) is UNSET
+    client, seen = recorder(ok(DOCK))
+    client.docks.update("d1", **copy.deepcopy({"name": "x", "ttl_seconds": UNSET}))
+    assert body_of(seen[0]) == {"name": "x"}
 
 
 def test_stop_resume_return_dock_state() -> None:

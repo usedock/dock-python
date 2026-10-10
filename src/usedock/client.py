@@ -32,6 +32,11 @@ class _Unset:
     def __bool__(self) -> bool:
         return False
 
+    def __reduce__(self) -> str:
+        # copy, deepcopy and pickle return the module-level singleton, so
+        # ``is UNSET`` checks still hold on copied keyword arguments.
+        return "UNSET"
+
 
 UNSET: Any = _Unset()
 """Default for arguments where ``None`` is meaningful: omit the field. Pass ``None`` to send
