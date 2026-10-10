@@ -10,11 +10,11 @@ Thanks for helping build Dock.
 
 ## Contributor License Agreement
 
-Every contributor signs the [Dock CLA](https://github.com/usedock/dock/blob/main/CLA.md) once. It covers all repositories in the usedock organization. On your first pull request the CLA bot posts a comment; reply with the sentence it gives you to sign. You keep the copyright in your work.
+Every contributor signs the [Dock CLA](https://github.com/usedock/dock/blob/83279d37875c012493ef59b52f91a88c63bbae94/CLA.md). Signatures are stored per repository, so the CLA bot asks on your first pull request in each repository; reply with the sentence it gives you to sign. You keep the copyright in your work.
 
 ## Development
 
-The SDK is written by hand. Names follow the shared vocabulary (`docks.create`, `dock.exec`, `dock.branch`) and only public routes are exposed. Every change runs the shared scenario suite (create, exec, stop, resume, branch, delete) against a real control plane.
+These notes apply once the code lands. The SDK is written by hand. Names follow the shared vocabulary (`Dock.create`, `dock.exec`, `dock.branch`) and only public routes are exposed. A shared scenario suite (create, exec, stop, resume, branch, delete) against a real control plane is planned; once it exists, every change runs it.
 
 ## Pull requests
 
