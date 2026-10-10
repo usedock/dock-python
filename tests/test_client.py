@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from usedock import MAX_WRITE_BYTES, Dock, DockError
-from usedock.client import shell_quote
+from usedock.client import MAX_COMMAND_BYTES, shell_quote
 
 DOCK = {"id": "d1", "name": "n", "state": "ready", "cpus": 2, "extraUnknown": {"a": 1}}
 
@@ -79,6 +79,12 @@ def test_create_maps_camel_case_and_omits_unset() -> None:
     }
     assert dock.id == "d1" and dock.state == "ready" and dock.cpus == 2
     assert dock.raw["extraUnknown"] == {"a": 1}
+
+
+def test_models_map_null_strings_to_empty() -> None:
+    # Legacy docks have a null name; str(None) would surface as "None".
+    client, _ = recorder(ok({"id": "d", "name": None, "state": "ready"}))
+    assert client.docks.get("d").name == ""
 
 
 def test_models_tolerate_minimal_payload() -> None:
@@ -185,8 +191,10 @@ def test_non_json_and_network_errors() -> None:
     assert net.value.code == "network_error"
 
 
-def exec_ok(stdout: str = "", exit_code: int = 0, stderr: str = "") -> httpx.Response:
-    return ok({"exitCode": exit_code, "stdout": stdout, "stderr": stderr, "truncated": False})
+def exec_ok(
+    stdout: str = "", exit_code: int = 0, stderr: str = "", truncated: bool = False
+) -> httpx.Response:
+    return ok({"exitCode": exit_code, "stdout": stdout, "stderr": stderr, "truncated": truncated})
 
 
 def test_shell_quote() -> None:
@@ -213,10 +221,39 @@ def test_files_write_quotes_hostile_path() -> None:
 
 def test_files_write_size_cap() -> None:
     client, seen = recorder(exec_ok())
-    client.docks.files.write("d1", "/a", "x" * MAX_WRITE_BYTES)
     with pytest.raises(ValueError):
         client.docks.files.write("d1", "/a", "x" * (MAX_WRITE_BYTES + 1))
+    assert len(seen) == 0
+
+
+def largest_accepted_write(client: Dock, path: str) -> int:
+    for size in range(MAX_WRITE_BYTES, 0, -3):
+        try:
+            client.docks.files.write("d1", path, "x" * size)
+        except ValueError:
+            continue
+        return size
+    return 0
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/a", "/home/user/work/" + "p" * 200, "/w/" + "\u00e9" * 300],
+    ids=["short", "long", "multibyte"],
+)
+def test_files_write_never_sends_a_command_over_64kb(path: str) -> None:
+    # 48 KB of content is exactly 64 KB of base64, so the whole command (template
+    # and the quoted path, twice) is over the API's 64 KB limit, which counts
+    # UTF-8 bytes. The SDK must refuse it locally instead of sending a request the
+    # API rejects with 422.
+    client, seen = recorder(exec_ok())
+    with pytest.raises(ValueError):
+        client.docks.files.write("d1", path, "x" * MAX_WRITE_BYTES)
+    assert largest_accepted_write(client, path) > 47 * 1024
     assert len(seen) == 1
+    command = body_of(seen[0])["command"]
+    assert len(command.encode("utf-8")) <= MAX_COMMAND_BYTES
+    assert len(command.encode("utf-8")) > MAX_COMMAND_BYTES - 8
 
 
 def test_files_read_and_list() -> None:
@@ -235,3 +272,16 @@ def test_files_nonzero_exit_is_error() -> None:
         client.docks.files.read("d1", "/missing")
     assert info.value.code == "file_command_failed"
     assert "no such file" in info.value.message
+
+
+def test_files_truncated_output_is_error() -> None:
+    # The API clips stdout at 1 MiB (a multiple of 4), so a clipped base64
+    # prefix decodes cleanly; the helper must not return the partial file.
+    clipped = base64.b64encode(b"a" * 900_000).decode()[: 1 << 20]
+    client, _ = recorder(exec_ok(clipped, truncated=True))
+    with pytest.raises(DockError) as info:
+        client.docks.files.read("d1", "/big")
+    assert info.value.code == "output_truncated"
+    client2, _ = recorder(exec_ok("a\nb\n", truncated=True))
+    with pytest.raises(DockError):
+        client2.docks.files.list("d1", "/d")

@@ -9,6 +9,12 @@ def _opt_int(data: Dict[str, Any], key: str) -> Optional[int]:
     return value if isinstance(value, int) else None
 
 
+def _str(data: Dict[str, Any], key: str) -> str:
+    """A string field; missing or null (legacy docks have no name) becomes ""."""
+    value = data.get(key)
+    return value if isinstance(value, str) else ""
+
+
 def _opt_str(data: Dict[str, Any], key: str) -> Optional[str]:
     value = data.get(key)
     return value if isinstance(value, str) else None
@@ -33,9 +39,9 @@ class DockInfo:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> DockInfo:
         return cls(
-            id=str(data.get("id", "")),
-            name=str(data.get("name", "")),
-            state=str(data.get("state", "")),
+            id=_str(data, "id"),
+            name=_str(data, "name"),
+            state=_str(data, "state"),
             workspace_id=_opt_str(data, "workspaceId"),
             image=_opt_str(data, "image"),
             runtime=_opt_str(data, "runtime"),
@@ -59,8 +65,8 @@ class ExecResult:
     def from_dict(cls, data: Dict[str, Any]) -> ExecResult:
         return cls(
             exit_code=_opt_int(data, "exitCode") or 0,
-            stdout=str(data.get("stdout", "")),
-            stderr=str(data.get("stderr", "")),
+            stdout=_str(data, "stdout"),
+            stderr=_str(data, "stderr"),
             truncated=bool(data.get("truncated", False)),
             duration_ms=_opt_int(data, "durationMs"),
             raw=data,
@@ -78,8 +84,8 @@ class Operation:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Operation:
         return cls(
-            id=str(data.get("id", "")),
-            status=str(data.get("status", "")),
+            id=_str(data, "id"),
+            status=_str(data, "status"),
             target_type=_opt_str(data, "targetType"),
             target_id=_opt_str(data, "targetId"),
             raw=data,

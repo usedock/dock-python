@@ -43,9 +43,11 @@ Results are dataclasses (`DockInfo`, `ExecResult`, `Operation`). Only `id`,
 `name` and `state` are relied on; unknown response fields are kept in `.raw`.
 
 The API has no file routes, so `files.*` run one `exec` call: content travels
-as base64, paths are single-quoted, and one write is capped at 48 KB
-(`ValueError` above that). A non-zero exit raises `DockError` with code
-`file_command_failed`.
+as base64, paths are single-quoted, and one write must fit the API's 64 KB
+command limit: about 48 KB of content minus the path (`ValueError` above that).
+A non-zero exit raises `DockError` with code `file_command_failed`; output the
+API clipped at 1 MiB (a read of a file over about 768 KB) raises `DockError`
+with code `output_truncated` instead of returning partial content.
 
 ## Errors
 

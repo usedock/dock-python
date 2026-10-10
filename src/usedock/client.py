@@ -13,8 +13,11 @@ from .models import DockInfo, ExecResult, Operation
 
 DEFAULT_BASE_URL = "https://api.usedock.io"
 
-# One exec command is capped at 64 KB; base64 inflates content by 4/3.
+# One exec command is capped at 64 KB; base64 inflates content by 4/3, so a
+# write can never exceed 48 KB. The real limit is the whole command (content
+# plus the quoted path, twice, plus the template), checked in ``Files.write``.
 MAX_WRITE_BYTES = 48 * 1024
+MAX_COMMAND_BYTES = 64 * 1024
 
 
 def shell_quote(value: str) -> str:
@@ -284,6 +287,10 @@ class Files:
         if result.exit_code != 0:
             detail = result.stderr.strip() or f"exit code {result.exit_code}"
             raise DockError("file_command_failed", 0, f"{what}: {detail}")
+        if result.truncated:
+            # The API clips stdout/stderr at 1 MiB; a clipped base64 prefix still
+            # decodes, so returning it would silently hand back partial content.
+            raise DockError("output_truncated", 0, f"{what}: output exceeded the exec output limit")
         return result
 
     def write(self, dock_id: str, path: str, content: Union[str, bytes]) -> str:
@@ -295,6 +302,11 @@ class Files:
         q = shell_quote(path)
         encoded = base64.b64encode(raw).decode("ascii")
         command = f"mkdir -p -- \"$(dirname -- {q})\" && printf '%s' '{encoded}' | base64 -d > {q}"
+        if len(command.encode("utf-8")) > MAX_COMMAND_BYTES:
+            raise ValueError(
+                f"content is {len(raw)} bytes; with this path the exec command would exceed "
+                f"{MAX_COMMAND_BYTES} bytes (about 48 KB of content minus the path)"
+            )
         self._run(dock_id, command, f"write {path}")
         return path
 
