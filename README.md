@@ -6,6 +6,8 @@ The Python client for [Dock](https://github.com/usedock/dock): isolated Linux ma
 
 ## Proposed API: install
 
+Not published yet; the package name is not claimed.
+
 ```sh
 pip install usedock
 ```
