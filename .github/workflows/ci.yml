@@ -24,7 +24,7 @@ jobs:
       - run: ruff format --check .
       - run: mypy
       - name: Unit tests
-        run: pytest tests/test_client.py
+        run: pytest tests/test_client.py tests/test_bash_resolver.py
       - name: Read pinned scenarios ref
         id: ref
         run: echo "sha=$(tr -d '[:space:]' < SCENARIOS_REF)" >> "$GITHUB_OUTPUT"
