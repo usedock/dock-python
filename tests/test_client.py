@@ -12,7 +12,18 @@ import httpx
 import pytest
 
 from bash_resolver import resolve_bash
-from usedock import MAX_WRITE_BYTES, UNSET, Dock, DockError, DockState
+from usedock import (
+    MAX_WRITE_BYTES,
+    UNSET,
+    ConnectorAdminOnlyError,
+    ConnectorNotConnectedError,
+    ConnectorNotFoundError,
+    Dock,
+    DockError,
+    DockState,
+    ImageUnavailableError,
+    ImageUnknownError,
+)
 from usedock.client import MAX_COMMAND_BYTES, shell_quote
 
 DOCK = {"id": "d1", "name": "n", "state": "ready", "cpus": 2, "extraUnknown": {"a": 1}}
@@ -509,3 +520,104 @@ def test_missing_scenarios_skip_by_default_but_fail_when_required(tmp_path: Path
     assert default.returncode == 0 and "skipped" in default.stdout
     required = _run_scenarios(True, tmp_path)
     assert required.returncode != 0 and "DOCK_SCENARIOS_REQUIRED" in required.stdout
+
+
+CONNECTOR = {
+    "kind": "linear",
+    "type": "tool",
+    "status": "connected",
+    "accountLabel": "Acme",
+    "scopes": ["read"],
+    "oauthAvailable": False,
+    "readOnly": False,
+    "updatedAt": "2026-01-01T00:00:00.000Z",
+}
+
+
+def test_create_sends_connectors_and_dock_returns_them() -> None:
+    client, seen = recorder(ok({**DOCK, "connectors": ["linear", "figma"]}, 201))
+    dock = client.docks.create(workspace_id="w", connectors=["linear", "figma"])
+    assert body_of(seen[0]) == {"workspaceId": "w", "connectors": ["linear", "figma"]}
+    assert dock.connectors == ["linear", "figma"]
+    client, seen = recorder(ok(DOCK, 201))
+    assert client.docks.create(workspace_id="w").connectors == []
+    assert "connectors" not in body_of(seen[0])
+
+
+def test_connectors_list() -> None:
+    client, seen = recorder(ok([CONNECTOR]))
+    items = client.connectors.list("w 1")
+    assert (seen[0].method, seen[0].url.raw_path) == ("GET", b"/v1/workspaces/w%201/connectors")
+    assert items[0].kind == "linear"
+    assert items[0].status == "connected"
+    assert items[0].account_label == "Acme"
+    assert items[0].scopes == ["read"]
+    assert items[0].read_only is False
+    assert items[0].raw["type"] == "tool"
+
+
+def test_connectors_connect_and_disconnect() -> None:
+    client, seen = recorder(ok(CONNECTOR))
+    connector = client.connectors.connect("w", "linear", "lin_key")
+    assert (seen[0].method, seen[0].url.path) == ("PUT", "/v1/workspaces/w/connectors/linear")
+    assert body_of(seen[0]) == {"token": "lin_key"}
+    assert connector.status == "connected"
+    client, seen = recorder(ok({"kind": "linear", "status": "not_connected"}))
+    state = client.connectors.disconnect("w", "linear")
+    assert (seen[0].method, seen[0].url.path) == ("DELETE", "/v1/workspaces/w/connectors/linear")
+    assert (state.kind, state.status) == ("linear", "not_connected")
+
+
+def test_images_list() -> None:
+    image = {
+        "name": "node-22",
+        "description": "d",
+        "arch": ["amd64"],
+        "sizeMiB": 2048,
+        "contents": "c",
+        "available": True,
+    }
+    client, seen = recorder(ok([image]))
+    images = client.images.list()
+    assert (seen[0].method, seen[0].url.path) == ("GET", "/v1/images")
+    assert images[0].name == "node-22"
+    assert images[0].arch == ["amd64"]
+    assert images[0].size_mib == 2048
+    assert images[0].available is True
+
+
+@pytest.mark.parametrize(
+    "code,status,cls",
+    [
+        ("connector_not_connected", 409, ConnectorNotConnectedError),
+        ("connector_admin_only", 403, ConnectorAdminOnlyError),
+        ("image_unknown", 400, ImageUnknownError),
+        ("image_unavailable", 400, ImageUnavailableError),
+    ],
+)
+def test_new_error_codes_raise_typed_errors(code: str, status: int, cls: type) -> None:
+    client, _ = recorder(httpx.Response(status, json={"ok": False, "code": code, "message": "m"}))
+    with pytest.raises(cls) as info:
+        client.docks.create(workspace_id="w")
+    assert isinstance(info.value, DockError)
+    assert (info.value.code, info.value.status) == (code, status)
+
+
+def test_disconnect_not_connected_raises_connector_not_found() -> None:
+    client, _ = recorder(
+        httpx.Response(
+            404, json={"ok": False, "code": "connector_not_found", "message": "Connector not found"}
+        )
+    )
+    with pytest.raises(ConnectorNotFoundError) as info:
+        client.connectors.disconnect("w", "slack")
+    assert (info.value.code, info.value.status) == ("connector_not_found", 404)
+
+
+def test_other_codes_stay_plain_dock_error() -> None:
+    client, _ = recorder(
+        httpx.Response(404, json={"ok": False, "code": "dock_not_found", "message": "m"})
+    )
+    with pytest.raises(DockError) as info:
+        client.docks.get("d")
+    assert type(info.value) is DockError
