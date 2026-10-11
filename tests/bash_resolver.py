@@ -7,6 +7,7 @@ starts WSL, so it is never used there.
 import ntpath
 import os
 import re
+import shutil
 import sys
 from typing import Callable, Dict, Mapping, NamedTuple, Optional
 
@@ -30,20 +31,27 @@ def is_safe_windows_bash(path: str) -> bool:
     norm = path.replace("/", "\\").lower()
     if not re.match(r"^[a-z]:\\", norm):
         return False
+    segs = norm.split("\\")[1:]
+    # Windows drops `.`/`..`, empty and trailing-dot segments and expands 8.3 names (WINDOW~1),
+    # so only plain segments are accepted or the System32/WindowsApps check could be bypassed.
+    if any(s == "" or s.endswith((".", " ")) or "~" in s for s in segs):
+        return False
     if re.search(r"\\windows\\(system32|sysnative|syswow64)\\", norm):
         return False
-    return "windowsapps" not in norm.split("\\")
+    return "windowsapps" not in segs
 
 
 def resolve_bash(
     platform: Optional[str] = None,
     env: Optional[Mapping[str, str]] = None,
     exists: Callable[[str], bool] = os.path.exists,
+    which: Callable[[str], Optional[str]] = shutil.which,
 ) -> Resolution:
     platform = sys.platform if platform is None else platform
     env = dict(os.environ if env is None else env)
     if platform != "win32":
-        return Resolution("bash", env, "")
+        found = which("bash")
+        return Resolution(found, env, "" if found else "bash not found on PATH")
     configured = env.get("DOCK_TEST_BASH")
     bash: Optional[str] = None
     if configured:

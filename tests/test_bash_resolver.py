@@ -14,8 +14,21 @@ def win(env: Dict[str, str], present: List[str]) -> Resolution:
 
 @pytest.mark.parametrize("platform", ["linux", "darwin"])
 def test_uses_bash_from_path_off_windows(platform: str) -> None:
-    r = resolve_bash(platform, {}, lambda p: False)
-    assert (r.bash, r.reason) == ("bash", "")
+    r = resolve_bash(platform, {}, lambda p: False, lambda n: "/usr/bin/" + n)
+    assert (r.bash, r.reason) == ("/usr/bin/bash", "")
+
+
+def test_skips_off_windows_without_bash() -> None:
+    r = resolve_bash("linux", {}, lambda p: False, lambda n: None)
+    assert r.bash is None
+    assert r.reason
+
+
+def test_never_looks_up_path_on_windows() -> None:
+    def no_which(name: str) -> str:
+        raise AssertionError("PATH lookup on Windows")
+
+    assert resolve_bash("win32", {}, lambda p: False, no_which).bash is None
 
 
 def test_prefers_git_bash_bin_then_usr_bin() -> None:
@@ -45,6 +58,12 @@ def test_accepts_safe_override() -> None:
         "bash",
         "bash.exe",
         "..\\bash.exe",
+        "C:\\Windows\\.\\System32\\bash.exe",
+        "C:\\Windows\\System32.\\bash.exe",
+        "C:\\Windows\\\\System32\\bash.exe",
+        "C:\\Windows\\System32\\..\\System32\\bash.exe",
+        "C:\\Users\\me\\AppData\\Local\\Microsoft\\WINDOW~1\\bash.exe",
+        "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps \\bash.exe",
     ],
 )
 def test_rejects_unsafe_override_without_falling_back(p: str) -> None:
