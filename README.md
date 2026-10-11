@@ -27,8 +27,7 @@ with Dock() as client:  # reads DOCK_API_KEY and DOCK_API_URL
         run = client.docks.exec(dock.id, "python3 -c 'print(2 ** 10)'")
         print(run.stdout, run.exit_code)
 
-        client.docks.files.write(dock.id, "/home/user/work/hello.txt", "hi
-")
+        client.docks.files.write(dock.id, "/home/user/work/hello.txt", "hi\n")
         print(client.docks.files.read(dock.id, "/home/user/work/hello.txt"))
     finally:
         client.docks.delete(dock.id)
@@ -61,7 +60,8 @@ raises `file_command_failed`, and a symlink to a directory lists its target.
 
 File helpers raise `DockError` with these codes. `status` is 200 when the exec
 call itself succeeded (`file_command_failed`, `output_truncated`) and 0 when the
-error is local (`file_too_large`, `file_not_utf8`); dock-js and dock-go match:
+error is local (`file_too_large`, `file_not_utf8`). dock-js and dock-go use the
+same statuses for the codes they share (`file_not_utf8` is Python only):
 
 | Code | When |
 |---|---|
