@@ -37,9 +37,9 @@ __all__ = [
     "Image",
     "ImageUnavailableError",
     "ImageUnknownError",
+    "Operation",
+    "Port",
     "PortLimitReachedError",
     "PortNotFoundError",
     "PortsUnavailableError",
-    "Operation",
-    "Port",
 ]
