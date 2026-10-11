@@ -315,7 +315,7 @@ def test_files_truncated_output_is_error() -> None:
     assert info2.value.code == "output_truncated"
 
 
-BASH, BASH_SKIP_REASON = resolve_bash()
+BASH, BASH_ENV, BASH_SKIP_REASON = resolve_bash()
 
 
 def _bash_supports_helpers() -> bool:
@@ -325,6 +325,7 @@ def _bash_supports_helpers() -> bool:
     probe = subprocess.run(
         [bash, "-c", "printf x | base64 -w0 && mkdir -p -- . && find -H . -maxdepth 0"],
         capture_output=True,
+        env=BASH_ENV,
     )
     return probe.returncode == 0
 
@@ -333,6 +334,12 @@ needs_bash = pytest.mark.skipif(
     not _bash_supports_helpers(),
     reason=BASH_SKIP_REASON or "needs bash with GNU base64 and find",
 )
+
+
+@pytest.mark.skipif(not os.environ.get("CI"), reason="CI only")
+def test_bash_is_usable_in_ci() -> None:
+    assert _bash_supports_helpers(), BASH_SKIP_REASON or "bash lacks GNU base64 or find"
+
 
 HOSTILE_NAMES = [
     "plain.txt",
@@ -355,6 +362,7 @@ def bash_client(cwd: Path) -> Dock:
             [bash, "-c", json.loads(request.content)["command"]],
             cwd=cwd,
             capture_output=True,
+            env=BASH_ENV,
         )
         return ok(
             {
@@ -381,7 +389,7 @@ def test_files_hostile_names_round_trip_in_bash(tmp_path: Path, name: str) -> No
     # Absolute path.
     # (the root comes from bash itself: on Windows a C:/ path is not absolute to it).
     root = subprocess.run(
-        [str(BASH), "-c", "pwd"], cwd=tmp_path, capture_output=True, text=True
+        [str(BASH), "-c", "pwd"], cwd=tmp_path, capture_output=True, text=True, env=BASH_ENV
     ).stdout.strip()
     files.write("d1", f"{root}/{name}/abs", "x")
     assert files.read("d1", f"{root}/{name}/abs") == "x"
