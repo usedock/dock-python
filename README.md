@@ -46,8 +46,11 @@ Unknown response fields are kept in `.raw`.
 
 Omitted arguments are not sent. `update(ttl_seconds=None)` sends JSON `null` to
 turn auto-stop off; leave it out (the default, `usedock.UNSET`) to keep the
-current value. `resume` does not take this: the API ignores `ttl_seconds` on
-resume today. `exec`, like `create` and `branch`, accepts `idempotency_key=`.
+current value. `resume(ttl_seconds=...)` works the same way: a number sets
+auto-stop (counted from ready), `None` clears it, and omitting it keeps the
+current value. `files.read` and `files.list` raise `file_too_large` (before
+sending) when the path makes the command exceed the 64 KB exec limit.
+`exec`, like `create` and `branch`, accepts `idempotency_key=`.
 
 The API has no file routes, so `files.*` run one `exec` call: content travels
 as base64, paths are single-quoted, and the command must fit the API's 64 KB

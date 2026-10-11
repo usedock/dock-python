@@ -242,21 +242,23 @@ class Docks:
         cpus: Optional[int] = None,
         memory_mib: Optional[int] = None,
         disk_gib: Optional[int] = None,
-        ttl_seconds: Optional[int] = None,
+        ttl_seconds: Optional[int] = UNSET,
         environment: Optional[str] = None,
         no_env: Optional[bool] = None,
     ) -> DockState:
         data = self._c._request(
             "POST",
             f"/v1/docks/{_seg(dock_id)}/resume",
-            body=_body(
-                cpus=cpus,
-                memoryMiB=memory_mib,
-                diskGiB=disk_gib,
-                ttlSeconds=ttl_seconds,
-                environment=environment,
-                noEnv=no_env,
-            ),
+            body={
+                **_body(
+                    cpus=cpus,
+                    memoryMiB=memory_mib,
+                    diskGiB=disk_gib,
+                    environment=environment,
+                    noEnv=no_env,
+                ),
+                **({} if ttl_seconds is UNSET else {"ttlSeconds": ttl_seconds}),
+            },
         )
         return DockState.from_dict(data)
 
@@ -321,6 +323,17 @@ class Files:
             )
         return result
 
+    @staticmethod
+    def _check_size(command: str, what: str) -> None:
+        size = len(command.encode("utf-8"))
+        if size > MAX_COMMAND_BYTES:
+            raise DockError(
+                "file_too_large",
+                0,
+                f"{what}: the exec command would be {size} bytes; the limit is "
+                f"{MAX_COMMAND_BYTES} (the path is too long)",
+            )
+
     def write(self, dock_id: str, path: str, content: Union[str, bytes]) -> str:
         raw = content.encode("utf-8") if isinstance(content, str) else content
         if len(raw) > MAX_WRITE_BYTES:
@@ -349,7 +362,9 @@ class Files:
         return path
 
     def read_bytes(self, dock_id: str, path: str) -> bytes:
-        result = self._run(dock_id, f"base64 -w0 -- {shell_quote(path)}", f"read {path}")
+        command = f"base64 -w0 -- {shell_quote(path)}"
+        self._check_size(command, f"read {path}")
+        result = self._run(dock_id, command, f"read {path}")
         return base64.b64decode(result.stdout)
 
     def read(self, dock_id: str, path: str) -> str:
@@ -367,6 +382,7 @@ class Files:
             'find -H "$p" -mindepth 1 -maxdepth 1 -exec sh -c '
             '\'for f; do printf "%s" "${f##*/}" | base64 -w0; echo; done\' sh {} +'
         )
+        self._check_size(command, f"list {path}")
         result = self._run(dock_id, command, f"list {path}")
         return [
             base64.b64decode(line).decode("utf-8", errors="replace")
