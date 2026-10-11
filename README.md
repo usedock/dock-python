@@ -1,18 +1,33 @@
 # Dock Python SDK
 
-The Python client for [Dock](https://github.com/usedock/dock): isolated Linux machines for agents, on your laptop, your servers, or our cloud.
+Isolated Linux machines for agents. On your laptop, your servers, or our cloud.
 
-> **Status:** not published to PyPI yet.
+The Python client for [Dock](https://github.com/usedock/dock). Create docks, run commands in them, stop, resume and branch them from Python.
 
 ## Install
 
-Not published to PyPI yet. Install from a checkout:
-
 ```sh
-pip install -e .
+pip install git+https://github.com/usedock/dock-python
 ```
 
-Python 3.9 or newer. The only runtime dependency is `httpx`.
+Python 3.9 or newer. The only runtime dependency is `httpx`. From a checkout, use `pip install -e .`.
+
+## Quickstart
+
+You need a control plane (self-hosted, or Dock Cloud when it opens) and an API key. To try docks without either, install the [`dock` CLI](https://github.com/usedock/docklet#install-the-cli), which runs docks locally with no account.
+
+```sh
+export DOCK_API_URL=https://dock.example.com
+export DOCK_API_KEY=dock_...
+```
+
+Then run the example below with your workspace ID.
+
+<!-- recording: owner adds a 30-second quickstart recording here -->
+
+Docs: [SDKs](https://docs.usedock.io/sdks), [quickstart](https://docs.usedock.io/quickstart), [API](https://docs.usedock.io/api), [self-hosting](https://docs.usedock.io/self-hosting).
+
+> **Status:** early, and not published to PyPI yet; install from the git URL above. The `dock` CLI ships in signed releases (latest v0.2.0).
 
 ## Example
 
