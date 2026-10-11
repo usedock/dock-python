@@ -17,6 +17,10 @@ DEFAULT_BASE_URL = "https://api.usedock.io"
 # write can never exceed 48 KB. The real limit is the whole command (content
 # plus the quoted path, twice, plus the template); ``Files.write`` raises
 # ``DockError("file_too_large")`` before sending when it is over.
+#
+# Statuses on file-helper errors match dock-js and dock-go: ``file_command_failed``
+# and ``output_truncated`` carry 200 (the HTTP exec succeeded), ``file_too_large``
+# carries 0 (it is raised client-side, nothing was sent).
 MAX_WRITE_BYTES = 48 * 1024
 MAX_COMMAND_BYTES = 64 * 1024
 
@@ -304,15 +308,26 @@ class Files:
         result = self._docks.exec(dock_id, command)
         if result.exit_code != 0:
             detail = result.stderr.strip() or f"exit code {result.exit_code}"
-            raise DockError("file_command_failed", 0, f"{what}: {detail}")
+            raise DockError("file_command_failed", 200, f"{what}: {detail}")
         if result.truncated:
             # The API clips stdout/stderr at 1 MiB; a clipped base64 prefix still
             # decodes, so returning it would silently hand back partial content.
-            raise DockError("output_truncated", 0, f"{what}: output exceeded the exec output limit")
+            raise DockError(
+                "output_truncated", 200, f"{what}: output exceeded the exec output limit"
+            )
         return result
 
     def write(self, dock_id: str, path: str, content: Union[str, bytes]) -> str:
         raw = content.encode("utf-8") if isinstance(content, str) else content
+        if len(raw) > MAX_WRITE_BYTES:
+            # Cheap early check: over 48 KB always exceeds the command limit, so
+            # skip base64-encoding (and building a command from) huge input.
+            raise DockError(
+                "file_too_large",
+                0,
+                f"write {path}: content is {len(raw)} bytes; the limit is {MAX_WRITE_BYTES} "
+                f"bytes (the exec command is capped at {MAX_COMMAND_BYTES} bytes)",
+            )
         q = shell_quote(path)
         encoded = base64.b64encode(raw).decode("ascii")
         command = (
