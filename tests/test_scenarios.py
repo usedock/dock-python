@@ -71,7 +71,7 @@ class FakeServer:
                 self.end_headers()
                 self.wfile.write(data)
 
-            do_GET = do_POST = do_PATCH = do_DELETE = _handle  # noqa: N815
+            do_GET = do_POST = do_PATCH = do_PUT = do_DELETE = _handle  # noqa: N815
 
             def log_message(self, *args: Any) -> None:
                 pass
@@ -129,10 +129,21 @@ def call(client: Dock, ops: Dict[str, Any], op: str, args: Dict[str, Any]) -> Tu
     """Call the SDK for an op; return (status, data)."""
     args = dict(args)
     kwargs = {ARG_NAMES.get(k, k): v for k, v in args.items() if k not in ("dockId", "path")}
+    if op.startswith("connectors."):
+        kwargs = {}
     dock_id = args.get("dockId")
     status = 200
     if op in ops["http"]:
         status = ops["http"][op]["status"]
+    if op == "images.list":
+        return status, [i.raw for i in client.images.list()]
+    if op == "connectors.list":
+        return status, [c.raw for c in client.connectors.list(args["workspaceId"])]
+    if op == "connectors.connect":
+        connector = client.connectors.connect(args["workspaceId"], args["kind"], args["token"])
+        return status, connector.raw
+    if op == "connectors.disconnect":
+        return status, client.connectors.disconnect(args["workspaceId"], args["kind"]).raw
     if op == "docks.create":
         return status, client.docks.create(**kwargs).raw
     if op == "docks.list":

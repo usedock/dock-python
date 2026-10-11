@@ -3,13 +3,13 @@ from __future__ import annotations
 import base64
 import os
 from types import TracebackType
-from typing import Any, Dict, List, Mapping, Optional, Type, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Type, Union
 from urllib.parse import quote
 
 import httpx
 
-from .errors import DockError
-from .models import DockInfo, DockState, ExecResult, Operation
+from .errors import DockError, error_for
+from .models import Connector, ConnectorState, DockInfo, DockState, ExecResult, Image, Operation
 
 DEFAULT_BASE_URL = "https://api.usedock.io"
 
@@ -80,6 +80,8 @@ class Dock:
         )
         self.docks = Docks(self)
         self.operations = Operations(self)
+        self.connectors = Connectors(self)
+        self.images = Images(self)
 
     def close(self) -> None:
         self._http.close()
@@ -122,7 +124,7 @@ class Dock:
             raise DockError("invalid_response", response.status_code, "response was not JSON")
         if envelope.get("ok") is True and response.is_success:
             return envelope.get("data")
-        raise DockError(
+        raise error_for(
             str(envelope.get("code") or "unknown_error"),
             response.status_code,
             str(envelope.get("message") or response.reason_phrase),
@@ -145,6 +147,7 @@ class Docks:
         disk_gib: Optional[int] = None,
         ttl_seconds: Optional[int] = None,
         env: Optional[Mapping[str, str]] = None,
+        connectors: Optional[Sequence[str]] = None,
         environment: Optional[str] = None,
         no_env: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
@@ -161,6 +164,7 @@ class Docks:
                 diskGiB=disk_gib,
                 ttlSeconds=ttl_seconds,
                 env=dict(env) if env is not None else None,
+                connectors=list(connectors) if connectors is not None else None,
                 environment=environment,
                 noEnv=no_env,
             ),
@@ -363,3 +367,39 @@ class Operations:
     def get(self, operation_id: str) -> Operation:
         data = self._c._request("GET", f"/v1/operations/{_seg(operation_id)}")
         return Operation.from_dict(data)
+
+
+class Connectors:
+    """Workspace tool connections. Admins connect and disconnect; members can list.
+    Tokens are never returned."""
+
+    def __init__(self, client: Dock) -> None:
+        self._c = client
+
+    def list(self, workspace_id: str) -> List[Connector]:
+        data = self._c._request("GET", f"/v1/workspaces/{_seg(workspace_id)}/connectors")
+        return [Connector.from_dict(d) for d in data]
+
+    def connect(self, workspace_id: str, kind: str, token: str) -> Connector:
+        data = self._c._request(
+            "PUT",
+            f"/v1/workspaces/{_seg(workspace_id)}/connectors/{_seg(kind)}",
+            body={"token": token},
+        )
+        return Connector.from_dict(data)
+
+    def disconnect(self, workspace_id: str, kind: str) -> ConnectorState:
+        data = self._c._request(
+            "DELETE", f"/v1/workspaces/{_seg(workspace_id)}/connectors/{_seg(kind)}"
+        )
+        return ConnectorState.from_dict(data)
+
+
+class Images:
+    """The Dockyard image catalog."""
+
+    def __init__(self, client: Dock) -> None:
+        self._c = client
+
+    def list(self) -> List[Image]:
+        return [Image.from_dict(d) for d in self._c._request("GET", "/v1/images")]

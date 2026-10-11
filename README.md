@@ -36,7 +36,7 @@ with Dock() as client:  # reads DOCK_API_KEY and DOCK_API_URL
 
 Methods on `client.docks`: `create`, `list`, `get`, `update`, `exec`, `stop`,
 `resume`, `branch`, `delete`, and `files.write` / `files.read` / `files.read_bytes` / `files.list`.
-`client.operations.get(id)` polls an operation. Create, stop, resume and branch
+`client.operations.get(id)` polls an operation. `client.connectors` and `client.images` are described below. Create, stop, resume and branch
 return when the change is done. Sizes use `cpus`, `memory_mib`, `disk_gib`.
 
 Results are dataclasses (`DockInfo`, `DockState`, `ExecResult`, `Operation`).
@@ -65,6 +65,28 @@ File helpers raise `DockError` (status 0) with these codes:
 | `output_truncated` | the API clipped the output at 1 MiB (for example a read of a file over about 768 KB), so partial content is never returned |
 | `file_not_utf8` | `files.read` got bytes that are not valid UTF-8 |
 
+## Connectors and images
+
+Connect a workspace to a tool once (workspace admins only), then attach it to
+docks by kind. Tokens are never returned.
+
+```python
+client.connectors.connect(workspace_id, "linear", token="lin_api_...")
+for c in client.connectors.list(workspace_id):  # kind, type, status, read_only, ...
+    print(c.kind, c.status)
+
+dock = client.docks.create(workspace_id=workspace_id, connectors=["linear"])
+print(dock.connectors)  # ["linear"]
+
+client.connectors.disconnect(workspace_id, "linear")  # -> ConnectorState(kind, status)
+
+for image in client.images.list():  # the Dockyard catalog
+    print(image.name, image.size_mib, image.available)
+```
+
+`github` and `model-keys` are read-only kinds: they are listed but cannot be
+connected by token.
+
 ## Errors
 
 Every failure raises `DockError` with `code` (the API code such as
@@ -79,6 +101,11 @@ try:
 except DockError as err:
     print(err.code, err.status)
 ```
+
+Some codes raise a subclass of `DockError`, so you can catch them directly:
+`ConnectorNotConnectedError` (`connector_not_connected`, 409),
+`ConnectorAdminOnlyError` (`connector_admin_only`, 403), `ImageUnknownError`
+(`image_unknown`, 400) and `ImageUnavailableError` (`image_unavailable`, 400).
 
 ## Configuration
 

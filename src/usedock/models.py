@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 def _opt_int(data: Dict[str, Any], key: str) -> Optional[int]:
@@ -20,6 +20,11 @@ def _opt_str(data: Dict[str, Any], key: str) -> Optional[str]:
     return value if isinstance(value, str) else None
 
 
+def _str_list(data: Dict[str, Any], key: str) -> List[str]:
+    value = data.get(key)
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+
 @dataclass
 class DockInfo:
     """A dock. Only ``id``, ``name`` and ``state`` are guaranteed; the full
@@ -34,6 +39,7 @@ class DockInfo:
     cpus: Optional[int] = None
     memory_mib: Optional[int] = None
     disk_gib: Optional[int] = None
+    connectors: List[str] = field(default_factory=list)
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -48,6 +54,7 @@ class DockInfo:
             cpus=_opt_int(data, "cpus"),
             memory_mib=_opt_int(data, "memoryMiB"),
             disk_gib=_opt_int(data, "diskGiB"),
+            connectors=_str_list(data, "connectors"),
             raw=data,
         )
 
@@ -101,5 +108,73 @@ class Operation:
             status=_str(data, "status"),
             target_type=_opt_str(data, "targetType"),
             target_id=_opt_str(data, "targetId"),
+            raw=data,
+        )
+
+
+@dataclass
+class Connector:
+    """A workspace connector. ``status`` is ``connected``, ``not_connected`` or
+    ``reauth_required``; ``read_only`` kinds (github, model-keys) cannot be connected by token."""
+
+    kind: str
+    type: str
+    status: str
+    account_label: Optional[str] = None
+    scopes: List[str] = field(default_factory=list)
+    oauth_available: bool = False
+    read_only: bool = False
+    updated_at: Optional[str] = None
+    raw: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Connector:
+        return cls(
+            kind=_str(data, "kind"),
+            type=_str(data, "type"),
+            status=_str(data, "status"),
+            account_label=_opt_str(data, "accountLabel"),
+            scopes=_str_list(data, "scopes"),
+            oauth_available=bool(data.get("oauthAvailable", False)),
+            read_only=bool(data.get("readOnly", False)),
+            updated_at=_opt_str(data, "updatedAt"),
+            raw=data,
+        )
+
+
+@dataclass
+class ConnectorState:
+    """The ``{kind, status}`` answer of ``connectors.disconnect``."""
+
+    kind: str
+    status: str
+    raw: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> ConnectorState:
+        return cls(kind=_str(data, "kind"), status=_str(data, "status"), raw=data)
+
+
+@dataclass
+class Image:
+    """A Dockyard catalog image; ``available`` is whether a host serves it right now."""
+
+    name: str
+    description: str = ""
+    arch: List[str] = field(default_factory=list)
+    size_mib: Optional[int] = None
+    contents: str = ""
+    available: bool = False
+    raw: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Image:
+        return cls(
+            name=_str(data, "name"),
+            description=_str(data, "description"),
+            arch=_str_list(data, "arch"),
+            size_mib=_opt_int(data, "sizeMiB"),
+            contents=_str(data, "contents"),
+            available=bool(data.get("available", False)),
             raw=data,
         )
