@@ -24,7 +24,12 @@ jobs:
       - run: ruff format --check .
       - run: mypy
       - name: Unit tests
-        run: pytest tests/test_client.py tests/test_bash_resolver.py
+        # -rs lists skips; under CI the bash-based tests must run, never skip.
+        # The default shell is `bash -e` without pipefail, so set it or tee hides a failing pytest.
+        run: |
+          set -o pipefail
+          pytest tests/test_client.py tests/test_bash_resolver.py -rs | tee unit.log
+          if grep -E '^SKIPPED' unit.log; then echo "tests were skipped in CI"; exit 1; fi
       - name: Read pinned scenarios ref
         id: ref
         run: echo "sha=$(tr -d '[:space:]' < SCENARIOS_REF)" >> "$GITHUB_OUTPUT"

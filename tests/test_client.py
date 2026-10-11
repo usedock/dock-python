@@ -234,6 +234,22 @@ def test_files_write_too_large_is_file_too_large() -> None:
     assert len(seen) == 0
 
 
+def test_files_write_huge_input_fails_fast_without_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> bytes:
+        raise AssertionError("base64 must not run for oversized content")
+
+    monkeypatch.setattr(base64, "b64encode", boom)
+    client, seen = recorder(exec_ok())
+    huge = bytes(500 * 1024 * 1024)  # 500 MB, zero-filled (lazily allocated)
+    with pytest.raises(DockError) as info:
+        client.docks.files.write("d1", "/a", huge)
+    assert (info.value.code, info.value.status) == ("file_too_large", 0)
+    assert str(len(huge)) in info.value.message
+    assert len(seen) == 0
+
+
 def largest_accepted_write(client: Dock, path: str) -> int:
     for size in range(MAX_WRITE_BYTES, 0, -3):
         try:
@@ -288,6 +304,14 @@ def test_files_read_and_list() -> None:
     assert body_of(seen2[0])["command"] == LIST_COMMAND
 
 
+def test_files_list_non_utf8_name_becomes_replacement_char() -> None:
+    # A name that is not valid UTF-8 is decoded with U+FFFD, so it cannot be
+    # passed back to read or write; the original bytes are not recoverable.
+    listing = base64.b64encode(b"bad\xffname").decode() + "\n"
+    client, _ = recorder(exec_ok(listing))
+    assert client.docks.files.list("d1", "/d") == ["bad\ufffdname"]
+
+
 def test_files_nonzero_exit_is_error() -> None:
     client, _ = recorder(exec_ok("", 1, "cat: no such file\n"))
     for call in (
@@ -297,7 +321,7 @@ def test_files_nonzero_exit_is_error() -> None:
     ):
         with pytest.raises(DockError) as info:
             call()
-        assert (info.value.code, info.value.status) == ("file_command_failed", 0)
+        assert (info.value.code, info.value.status) == ("file_command_failed", 200)
         assert "no such file" in info.value.message
 
 
@@ -308,7 +332,7 @@ def test_files_truncated_output_is_error() -> None:
     client, _ = recorder(exec_ok(clipped, truncated=True))
     with pytest.raises(DockError) as info:
         client.docks.files.read("d1", "/big")
-    assert (info.value.code, info.value.status) == ("output_truncated", 0)
+    assert (info.value.code, info.value.status) == ("output_truncated", 200)
     client2, _ = recorder(exec_ok(b64("a") + "\n" + b64("b") + "\n", truncated=True))
     with pytest.raises(DockError) as info2:
         client2.docks.files.list("d1", "/d")
@@ -404,6 +428,8 @@ def test_files_list_includes_hidden_and_follows_symlinked_dir(tmp_path: Path) ->
     try:
         (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
     except OSError:
+        if os.environ.get("CI"):
+            pytest.fail("symlinks unavailable in CI")
         pytest.skip("symlinks unavailable")
     assert sorted(files.list("d1", "link")) == [".hidden", "visible"]
     with pytest.raises(DockError) as info:

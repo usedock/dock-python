@@ -27,8 +27,7 @@ with Dock() as client:  # reads DOCK_API_KEY and DOCK_API_URL
         run = client.docks.exec(dock.id, "python3 -c 'print(2 ** 10)'")
         print(run.stdout, run.exit_code)
 
-        client.docks.files.write(dock.id, "/home/user/work/hello.txt", "hi
-")
+        client.docks.files.write(dock.id, "/home/user/work/hello.txt", "hi\n")
         print(client.docks.files.read(dock.id, "/home/user/work/hello.txt"))
     finally:
         client.docks.delete(dock.id)
@@ -53,14 +52,20 @@ resume today. `exec`, like `create` and `branch`, accepts `idempotency_key=`.
 The API has no file routes, so `files.*` run one `exec` call: content travels
 as base64, paths are single-quoted, and the command must fit the API's 64 KB
 limit (about 48 KB of content minus the path). `files.list` returns every entry
-name, hidden ones included, in no fixed order; names may hold newlines.
+name, hidden ones included, in no fixed order; names may hold newlines. A name
+that is not valid UTF-8 comes back with U+FFFD in place of the bad bytes, so it
+cannot be passed back to `files.read` or `files.write`. Listing a regular file
+raises `file_command_failed`, and a symlink to a directory lists its target.
 `files.read` decodes UTF-8; use `files.read_bytes` for binary files.
 
-File helpers raise `DockError` (status 0) with these codes:
+File helpers raise `DockError` with these codes. `status` is 200 when the exec
+call itself succeeded (`file_command_failed`, `output_truncated`) and 0 when the
+error is local (`file_too_large`, `file_not_utf8`). dock-js and dock-go use the
+same statuses for the codes they share (`file_not_utf8` is Python only):
 
 | Code | When |
 |---|---|
-| `file_too_large` | the command would exceed 64 KB; raised before anything is sent |
+| `file_too_large` | content is over 48 KB, or the whole command would exceed 64 KB; raised before anything is sent |
 | `file_command_failed` | the command exits non-zero (the message carries stderr) |
 | `output_truncated` | the API clipped the output at 1 MiB (for example a read of a file over about 768 KB), so partial content is never returned |
 | `file_not_utf8` | `files.read` got bytes that are not valid UTF-8 |
