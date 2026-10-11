@@ -509,9 +509,12 @@ class Environments:
         provider_keys: Optional[str] = None,
         egress_allow: Optional[List[str]] = UNSET,
     ) -> Environment:
-        """Update posture. ``provider_keys`` is ``"gateway"`` (default; keys stay in the
-        control plane) or ``"plain"`` (the real key is written into the dock; admins only).
-        ``egress_allow=None`` clears the allowlist; leave it out to keep it."""
+        """Rename, move the default or change posture; needs an organization admin.
+        ``provider_keys`` is ``"gateway"`` (default; keys stay in the control plane) or
+        ``"plain"`` (the real key is written into the dock). ``egress_allow=None`` clears
+        the allowlist; leave it out to keep it. Posture changes (the pass flags,
+        ``safe_for_third_parties``, ``provider_keys``, ``egress_allow``) create a new
+        version; ``name``, ``is_default`` and ``secrets_access`` do not."""
         body = _body(
             name=name,
             isDefault=is_default,

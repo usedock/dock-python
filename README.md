@@ -108,10 +108,15 @@ client.docks.ports.remove(dock.id, 3000)
 ## Environments
 
 `client.environments.list(organization_id)`, `get(ref, organization_id=...)` and
-`update(ref, ..., provider_keys="plain")` read and change environments.
+`update(ref, ..., provider_keys="plain")` read and change environments. Reads need
+an organization member; `update` needs an organization admin.
 `provider_keys` is `"gateway"` (default: provider keys stay in the control plane and
 docks get a placeholder key plus gateway base URLs) or `"plain"` (the real key is
-written into the dock, so anyone inside it can read it; admins only). Connectors
+written into the dock, so anyone inside it can read it). `egress_allow=[...]` confines
+docks to those HTTPS hosts and `egress_allow=None` clears the list. Posture changes
+(the pass flags, `safe_for_third_parties`, `provider_keys`, `egress_allow`) make a new
+environment version; renames, `is_default` and `secrets_access` do not. Variable
+values are never returned, only `var_names`. Connectors
 also report `credential_type` (`oauth`, `personal_token`, `bot_token`, `org_token`,
 `user_token`, `token` or `None`).
 

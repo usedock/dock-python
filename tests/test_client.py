@@ -752,3 +752,39 @@ def test_environments_update_egress_allow_null_clears() -> None:
     client, seen = recorder(ok(ENVIRONMENT))
     client.environments.update("base", egress_allow=None)
     assert body_of(seen[0]) == {"egressAllow": None}
+
+
+def test_environment_reads_posture_fields() -> None:
+    data = {
+        **ENVIRONMENT,
+        "safeForThirdParties": True,
+        "passGithub": True,
+        "passSecrets": False,
+        "passDockCredentials": True,
+        "passAgentsCredentials": True,
+        "egressAllow": ["api.example.com"],
+        "varNames": ["A", "B"],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-02T00:00:00.000Z",
+    }
+    client, _ = recorder(ok(data))
+    env = client.environments.get("e1")
+    assert (
+        env.safe_for_third_parties,
+        env.pass_github,
+        env.pass_secrets,
+        env.pass_dock_credentials,
+        env.pass_agents_credentials,
+    ) == (True, True, False, True, True)
+    assert env.egress_allow == ["api.example.com"]
+    assert env.var_names == ["A", "B"]
+    assert (env.created_at, env.updated_at) == (
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-02T00:00:00.000Z",
+    )
+
+
+def test_environments_update_sends_posture_and_egress_list() -> None:
+    client, seen = recorder(ok(ENVIRONMENT))
+    client.environments.update("e1", pass_github=False, egress_allow=["api.example.com"])
+    assert body_of(seen[0]) == {"passGithub": False, "egressAllow": ["api.example.com"]}

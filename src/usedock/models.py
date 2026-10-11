@@ -211,7 +211,9 @@ class Environment:
     """An environment. ``provider_keys`` is how the organization's provider keys reach
     docks: ``gateway`` (default) keeps them in the control plane and gives the dock a
     placeholder key plus gateway base URLs; ``plain`` writes the real key into the dock,
-    so anyone who can run a command in it can read the key (weaker; admins only)."""
+    so anyone who can run a command in it can read the key (weaker; admins only).
+    ``egress_allow`` is ``None`` when egress is open minus private ranges. Variables are
+    listed by name only (``var_names``); values are never returned."""
 
     id: str
     organization_id: str
@@ -220,7 +222,15 @@ class Environment:
     is_default: bool = False
     current_version: Optional[int] = None
     secrets_access: Optional[str] = None
+    safe_for_third_parties: bool = False
+    pass_github: bool = False
+    pass_secrets: bool = False
+    pass_dock_credentials: bool = False
+    pass_agents_credentials: bool = False
     egress_allow: Optional[List[str]] = None
+    var_names: List[str] = field(default_factory=list)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -234,6 +244,14 @@ class Environment:
             is_default=bool(data.get("isDefault", False)),
             current_version=_opt_int(data, "currentVersion"),
             secrets_access=_opt_str(data, "secretsAccess"),
+            safe_for_third_parties=bool(data.get("safeForThirdParties", False)),
+            pass_github=bool(data.get("passGithub", False)),
+            pass_secrets=bool(data.get("passSecrets", False)),
+            pass_dock_credentials=bool(data.get("passDockCredentials", False)),
+            pass_agents_credentials=bool(data.get("passAgentsCredentials", False)),
             egress_allow=_str_list(data, "egressAllow") if isinstance(egress, list) else None,
+            var_names=_str_list(data, "varNames"),
+            created_at=_opt_str(data, "createdAt"),
+            updated_at=_opt_str(data, "updatedAt"),
             raw=data,
         )
