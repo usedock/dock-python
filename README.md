@@ -51,12 +51,19 @@ current value. `resume` does not take this: the API ignores `ttl_seconds` on
 resume today. `exec`, like `create` and `branch`, accepts `idempotency_key=`.
 
 The API has no file routes, so `files.*` run one `exec` call: content travels
-as base64, paths are single-quoted, and one write must fit the API's 64 KB
-command limit: about 48 KB of content minus the path (`ValueError` above that).
-`files.read` decodes UTF-8 and raises `DockError` with code `file_not_utf8` for
-anything else; use `files.read_bytes` for binary files. A non-zero exit raises `DockError` with code `file_command_failed`; output the
-API clipped at 1 MiB (a read of a file over about 768 KB) raises `DockError`
-with code `output_truncated` instead of returning partial content.
+as base64, paths are single-quoted, and the command must fit the API's 64 KB
+limit (about 48 KB of content minus the path). `files.list` returns every entry
+name, hidden ones included, in no fixed order; names may hold newlines.
+`files.read` decodes UTF-8; use `files.read_bytes` for binary files.
+
+File helpers raise `DockError` (status 0) with these codes:
+
+| Code | When |
+|---|---|
+| `file_too_large` | the command would exceed 64 KB; raised before anything is sent |
+| `file_command_failed` | the command exits non-zero (the message carries stderr) |
+| `output_truncated` | the API clipped the output at 1 MiB (for example a read of a file over about 768 KB), so partial content is never returned |
+| `file_not_utf8` | `files.read` got bytes that are not valid UTF-8 |
 
 ## Errors
 

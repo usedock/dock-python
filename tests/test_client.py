@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import pickle
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -213,7 +214,7 @@ def test_files_write_command() -> None:
     assert client.docks.files.write("d1", "/w/a b.txt", "hi\n") == "/w/a b.txt"
     enc = base64.b64encode(b"hi\n").decode()
     assert body_of(seen[0])["command"] == (
-        "mkdir -p -- \"$(dirname -- '/w/a b.txt')\" && "
+        "d=$(dirname -- '/w/a b.txt'; echo x) && mkdir -p -- \"${d%??}\" && "
         f"printf '%s' '{enc}' | base64 -d > '/w/a b.txt'"
     )
 
@@ -225,10 +226,11 @@ def test_files_write_quotes_hostile_path() -> None:
     assert "'x'\\''; rm -rf ~; '\\'''" in command
 
 
-def test_files_write_size_cap() -> None:
+def test_files_write_too_large_is_file_too_large() -> None:
     client, seen = recorder(exec_ok())
-    with pytest.raises(ValueError):
+    with pytest.raises(DockError) as info:
         client.docks.files.write("d1", "/a", "x" * (MAX_WRITE_BYTES + 1))
+    assert (info.value.code, info.value.status) == ("file_too_large", 0)
     assert len(seen) == 0
 
 
@@ -236,7 +238,8 @@ def largest_accepted_write(client: Dock, path: str) -> int:
     for size in range(MAX_WRITE_BYTES, 0, -3):
         try:
             client.docks.files.write("d1", path, "x" * size)
-        except ValueError:
+        except DockError as exc:
+            assert exc.code == "file_too_large"
             continue
         return size
     return 0
@@ -244,7 +247,7 @@ def largest_accepted_write(client: Dock, path: str) -> int:
 
 @pytest.mark.parametrize(
     "path",
-    ["/a", "/home/user/work/" + "p" * 200, "/w/" + "\u00e9" * 300],
+    ["/a", "/home/user/work/" + "p" * 200, "/w/" + "é" * 300],
     ids=["short", "long", "multibyte"],
 )
 def test_files_write_never_sends_a_command_over_64kb(path: str) -> None:
@@ -253,8 +256,9 @@ def test_files_write_never_sends_a_command_over_64kb(path: str) -> None:
     # UTF-8 bytes. The SDK must refuse it locally instead of sending a request the
     # API rejects with 422.
     client, seen = recorder(exec_ok())
-    with pytest.raises(ValueError):
+    with pytest.raises(DockError) as info:
         client.docks.files.write("d1", path, "x" * MAX_WRITE_BYTES)
+    assert info.value.code == "file_too_large"
     assert largest_accepted_write(client, path) > 47 * 1024
     assert len(seen) == 1
     command = body_of(seen[0])["command"]
@@ -262,22 +266,39 @@ def test_files_write_never_sends_a_command_over_64kb(path: str) -> None:
     assert len(command.encode("utf-8")) > MAX_COMMAND_BYTES - 8
 
 
+LIST_COMMAND = (
+    "p='/d' && case $p in /*) ;; *) p=./$p ;; esac && test -d \"$p\" && "
+    'find -H "$p" -mindepth 1 -maxdepth 1 -exec sh -c '
+    '\'for f; do printf "%s" "${f##*/}" | base64 -w0; echo; done\' sh {} +'
+)
+
+
+def b64(text: str) -> str:
+    return base64.b64encode(text.encode("utf-8")).decode()
+
+
 def test_files_read_and_list() -> None:
-    enc = base64.b64encode("héllo\n".encode()).decode()
+    enc = b64("héllo\n")
     client, seen = recorder(exec_ok(enc))
     assert client.docks.files.read("d1", "/a") == "héllo\n"
     assert body_of(seen[0])["command"] == "base64 -w0 -- '/a'"
-    client2, seen2 = recorder(exec_ok("b\n\na\n"))
-    assert client2.docks.files.list("d1", "/d") == ["b", "a"]
-    assert body_of(seen2[0])["command"] == "ls -1A -- '/d'"
+    listing = "\n".join([b64("b"), "", b64("a\nb"), b64("é")]) + "\n"
+    client2, seen2 = recorder(exec_ok(listing))
+    assert client2.docks.files.list("d1", "/d") == ["b", "a\nb", "é"]
+    assert body_of(seen2[0])["command"] == LIST_COMMAND
 
 
 def test_files_nonzero_exit_is_error() -> None:
     client, _ = recorder(exec_ok("", 1, "cat: no such file\n"))
-    with pytest.raises(DockError) as info:
-        client.docks.files.read("d1", "/missing")
-    assert info.value.code == "file_command_failed"
-    assert "no such file" in info.value.message
+    for call in (
+        lambda: client.docks.files.read("d1", "/missing"),
+        lambda: client.docks.files.list("d1", "/missing"),
+        lambda: client.docks.files.write("d1", "/missing/x", "hi"),
+    ):
+        with pytest.raises(DockError) as info:
+            call()
+        assert (info.value.code, info.value.status) == ("file_command_failed", 0)
+        assert "no such file" in info.value.message
 
 
 def test_files_truncated_output_is_error() -> None:
@@ -287,10 +308,95 @@ def test_files_truncated_output_is_error() -> None:
     client, _ = recorder(exec_ok(clipped, truncated=True))
     with pytest.raises(DockError) as info:
         client.docks.files.read("d1", "/big")
-    assert info.value.code == "output_truncated"
-    client2, _ = recorder(exec_ok("a\nb\n", truncated=True))
-    with pytest.raises(DockError):
+    assert (info.value.code, info.value.status) == ("output_truncated", 0)
+    client2, _ = recorder(exec_ok(b64("a") + "\n" + b64("b") + "\n", truncated=True))
+    with pytest.raises(DockError) as info2:
         client2.docks.files.list("d1", "/d")
+    assert info2.value.code == "output_truncated"
+
+
+def _bash_supports_helpers() -> bool:
+    bash = shutil.which("bash")
+    if not bash:
+        return False
+    probe = subprocess.run(
+        [bash, "-c", "printf x | base64 -w0 && mkdir -p -- . && find -H . -maxdepth 0"],
+        capture_output=True,
+    )
+    return probe.returncode == 0
+
+
+needs_bash = pytest.mark.skipif(
+    not _bash_supports_helpers(), reason="needs bash with GNU base64 and find"
+)
+
+HOSTILE_NAMES = [
+    "plain.txt",
+    "with space.txt",
+    "-leading-dash",
+    "bang!name",
+    'it\'s "quoted" $HOME `x`',
+    "line\nbreak",
+    "trailing\n",
+    "é中\U0001f600",
+]
+
+
+def bash_client(cwd: Path) -> Dock:
+    bash = shutil.which("bash")
+    assert bash
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        proc = subprocess.run(
+            [bash, "-c", json.loads(request.content)["command"]],
+            cwd=cwd,
+            capture_output=True,
+        )
+        return ok(
+            {
+                "exitCode": proc.returncode,
+                "stdout": proc.stdout.decode("utf-8", errors="replace"),
+                "stderr": proc.stderr.decode("utf-8", errors="replace"),
+                "truncated": False,
+            }
+        )
+
+    return make(handler)
+
+
+@needs_bash
+@pytest.mark.parametrize("name", HOSTILE_NAMES, ids=[repr(n) for n in HOSTILE_NAMES])
+def test_files_hostile_names_round_trip_in_bash(tmp_path: Path, name: str) -> None:
+    files = bash_client(tmp_path).docks.files
+    # Relative paths: "-leading-dash" must not be read as an option, and a
+    # trailing newline in the directory name must survive the dirname step.
+    files.write("d1", f"{name}/sub/{name}", "payload é\n")
+    assert files.read("d1", f"{name}/sub/{name}") == "payload é\n"
+    assert files.list("d1", f"{name}/sub") == [name]
+    assert files.list("d1", ".") == [name]
+    # Absolute path.
+    # (the root comes from bash itself: on Windows a C:/ path is not absolute to it).
+    root = subprocess.run(
+        [shutil.which("bash") or "bash", "-c", "pwd"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout.strip()
+    files.write("d1", f"{root}/{name}/abs", "x")
+    assert files.read("d1", f"{root}/{name}/abs") == "x"
+    assert sorted(files.list("d1", f"{root}/{name}")) == ["abs", "sub"]
+
+
+@needs_bash
+def test_files_list_includes_hidden_and_follows_symlinked_dir(tmp_path: Path) -> None:
+    files = bash_client(tmp_path).docks.files
+    files.write("d1", "real/.hidden", "h")
+    files.write("d1", "real/visible", "v")
+    try:
+        (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    assert sorted(files.list("d1", "link")) == [".hidden", "visible"]
+    with pytest.raises(DockError) as info:
+        files.list("d1", "real/visible")
+    assert info.value.code == "file_command_failed"
 
 
 def test_update_ttl_null_unset_and_value() -> None:
