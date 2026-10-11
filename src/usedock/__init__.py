@@ -15,6 +15,7 @@ from .models import (
     ExecResult,
     Image,
     Operation,
+    Port,
 )
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "ImageUnavailableError",
     "ImageUnknownError",
     "Operation",
+    "Port",
 ]

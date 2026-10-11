@@ -568,6 +568,55 @@ def test_connectors_connect_and_disconnect() -> None:
     assert (state.kind, state.status) == ("linear", "not_connected")
 
 
+PORT = {
+    "port": 3000,
+    "visibility": "private",
+    "url": "https://p.example",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "extraUnknown": 1,
+}
+
+
+def test_ports_list() -> None:
+    client, seen = recorder(ok([PORT]))
+    ports = client.docks.ports.list("d 1")
+    assert (seen[0].method, seen[0].url.raw_path) == ("GET", b"/v1/docks/d%201/ports")
+    assert ports[0].port == 3000
+    assert ports[0].visibility == "private"
+    assert ports[0].url == "https://p.example"
+    assert ports[0].raw["extraUnknown"] == 1
+
+
+def test_ports_expose_sends_visibility() -> None:
+    client, seen = recorder(ok({**PORT, "visibility": "public"}, 201))
+    port = client.docks.ports.expose("d1", 3000, visibility="public")
+    assert (seen[0].method, seen[0].url.path) == ("POST", "/v1/docks/d1/ports")
+    assert body_of(seen[0]) == {"port": 3000, "visibility": "public"}
+    assert port.visibility == "public"
+
+
+def test_ports_expose_omits_visibility_by_default() -> None:
+    client, seen = recorder(ok({**PORT, "url": None}, 201))
+    port = client.docks.ports.expose("d1", 3000)
+    assert body_of(seen[0]) == {"port": 3000}
+    assert port.url is None
+
+
+def test_ports_remove() -> None:
+    client, seen = recorder(ok({"deleted": True}))
+    assert client.docks.ports.remove("d1", 3000) is None
+    assert (seen[0].method, seen[0].url.path) == ("DELETE", "/v1/docks/d1/ports/3000")
+
+
+def test_ports_remove_not_exposed() -> None:
+    client, _ = recorder(
+        httpx.Response(404, json={"ok": False, "code": "port_not_found", "message": "no"})
+    )
+    with pytest.raises(DockError) as info:
+        client.docks.ports.remove("d1", 1)
+    assert (info.value.code, info.value.status) == ("port_not_found", 404)
+
+
 def test_images_list() -> None:
     image = {
         "name": "node-22",
