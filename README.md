@@ -27,7 +27,9 @@ Then run the example below with your workspace ID.
 
 Docs: [SDKs](https://docs.usedock.io/sdks), [quickstart](https://docs.usedock.io/quickstart), [API](https://docs.usedock.io/api), [self-hosting](https://docs.usedock.io/self-hosting).
 
-> **Status:** early, and not published to PyPI yet; install from the git URL above. The `dock` CLI ships in signed releases (latest v0.2.0).
+Questions and ideas: [GitHub Discussions](https://github.com/usedock/dock/discussions).
+
+> **Status:** early, and not published to PyPI yet; install from the git URL above. The `dock` CLI ships in signed releases.
 
 ## Example
 
