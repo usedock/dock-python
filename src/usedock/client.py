@@ -14,6 +14,7 @@ from .models import (
     ConnectorState,
     DockInfo,
     DockState,
+    Environment,
     ExecResult,
     Image,
     Operation,
@@ -95,6 +96,7 @@ class Dock:
         self.operations = Operations(self)
         self.connectors = Connectors(self)
         self.images = Images(self)
+        self.environments = Environments(self)
 
     def close(self) -> None:
         self._http.close()
@@ -470,3 +472,70 @@ class Images:
 
     def list(self) -> List[Image]:
         return [Image.from_dict(d) for d in self._c._request("GET", "/v1/images")]
+
+
+class Environments:
+    """Organization environments. ``ref`` is an id or a name; pass ``organization_id``
+    when addressing by name."""
+
+    def __init__(self, client: Dock) -> None:
+        self._c = client
+
+    def list(self, organization_id: str) -> List[Environment]:
+        data = self._c._request(
+            "GET", "/v1/environments", params={"organizationId": organization_id}
+        )
+        return [Environment.from_dict(d) for d in data]
+
+    def get(self, ref: str, *, organization_id: Optional[str] = None) -> Environment:
+        data = self._c._request(
+            "GET", f"/v1/environments/{_seg(ref)}", params=_org_params(organization_id)
+        )
+        return Environment.from_dict(data)
+
+    def update(
+        self,
+        ref: str,
+        *,
+        organization_id: Optional[str] = None,
+        name: Optional[str] = None,
+        is_default: Optional[bool] = None,
+        secrets_access: Optional[str] = None,
+        safe_for_third_parties: Optional[bool] = None,
+        pass_github: Optional[bool] = None,
+        pass_secrets: Optional[bool] = None,
+        pass_dock_credentials: Optional[bool] = None,
+        pass_agents_credentials: Optional[bool] = None,
+        provider_keys: Optional[str] = None,
+        egress_allow: Optional[List[str]] = UNSET,
+    ) -> Environment:
+        """Rename, move the default or change posture; needs an organization admin.
+        ``provider_keys`` is ``"gateway"`` (default; keys stay in the control plane) or
+        ``"plain"`` (the real key is written into the dock). ``egress_allow=None`` clears
+        the allowlist; leave it out to keep it. Posture changes (the pass flags,
+        ``safe_for_third_parties``, ``provider_keys``, ``egress_allow``) create a new
+        version; ``name``, ``is_default`` and ``secrets_access`` do not."""
+        body = _body(
+            name=name,
+            isDefault=is_default,
+            secretsAccess=secrets_access,
+            safeForThirdParties=safe_for_third_parties,
+            passGithub=pass_github,
+            passSecrets=pass_secrets,
+            passDockCredentials=pass_dock_credentials,
+            passAgentsCredentials=pass_agents_credentials,
+            providerKeys=provider_keys,
+        )
+        if egress_allow is not UNSET:
+            body["egressAllow"] = egress_allow
+        data = self._c._request(
+            "PATCH",
+            f"/v1/environments/{_seg(ref)}",
+            body=body,
+            params=_org_params(organization_id),
+        )
+        return Environment.from_dict(data)
+
+
+def _org_params(organization_id: Optional[str]) -> Optional[Dict[str, str]]:
+    return {"organizationId": organization_id} if organization_id else None

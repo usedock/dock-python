@@ -31,6 +31,14 @@ class ConnectorNotFoundError(DockError):
     """``connector_not_found`` (404): disconnecting a connector that is not connected."""
 
 
+class ConnectorTokenInvalidError(DockError):
+    """``connector_token_invalid`` (400): the vendor rejected the token passed to ``connect``."""
+
+
+class ConnectorUnreachableError(DockError):
+    """``connector_unreachable`` (502): the vendor could not be reached to verify the token."""
+
+
 class ImageUnknownError(DockError):
     """``image_unknown`` (400): the image is not in the Dockyard catalog."""
 
@@ -55,6 +63,8 @@ _BY_CODE: Dict[str, Type[DockError]] = {
     "connector_not_connected": ConnectorNotConnectedError,
     "connector_admin_only": ConnectorAdminOnlyError,
     "connector_not_found": ConnectorNotFoundError,
+    "connector_token_invalid": ConnectorTokenInvalidError,
+    "connector_unreachable": ConnectorUnreachableError,
     "image_unknown": ImageUnknownError,
     "image_unavailable": ImageUnavailableError,
     "port_not_found": PortNotFoundError,

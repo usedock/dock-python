@@ -105,6 +105,21 @@ client.docks.ports.remove(dock.id, 3000)
 `url` is `None` while hosted ports are off. Leaving `visibility` out of a repeat
 `expose` keeps the port's current visibility.
 
+## Environments
+
+`client.environments.list(organization_id)`, `get(ref, organization_id=...)` and
+`update(ref, ..., provider_keys="plain")` read and change environments. Reads need
+an organization member; `update` needs an organization admin.
+`provider_keys` is `"gateway"` (default: provider keys stay in the control plane and
+docks get a placeholder key plus gateway base URLs) or `"plain"` (the real key is
+written into the dock, so anyone inside it can read it). `egress_allow=[...]` confines
+docks to those HTTPS hosts and `egress_allow=None` clears the list. Posture changes
+(the pass flags, `safe_for_third_parties`, `provider_keys`, `egress_allow`) make a new
+environment version; renames, `is_default` and `secrets_access` do not. Variable
+values are never returned, only `var_names`. Connectors
+also report `credential_type` (`oauth`, `personal_token`, `bot_token`, `org_token`,
+`user_token`, `token` or `None`).
+
 ## Connectors and images
 
 Connect a workspace to a tool once (organization admins only; members get
@@ -145,7 +160,9 @@ except DockError as err:
 Some codes raise a subclass of `DockError`, so you can catch them directly:
 `ConnectorNotConnectedError` (`connector_not_connected`, 409),
 `ConnectorAdminOnlyError` (`connector_admin_only`, 403),
-`ConnectorNotFoundError` (`connector_not_found`, 404), `ImageUnknownError`
+`ConnectorNotFoundError` (`connector_not_found`, 404),
+`ConnectorTokenInvalidError` (`connector_token_invalid`, 400),
+`ConnectorUnreachableError` (`connector_unreachable`, 502), `ImageUnknownError`
 (`image_unknown`, 400), `ImageUnavailableError` (`image_unavailable`, 400),
 `PortNotFoundError` (`port_not_found`, 404), `PortLimitReachedError`
 (`port_limit_reached`, 409) and `PortsUnavailableError` (`ports_unavailable`,

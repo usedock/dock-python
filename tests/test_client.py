@@ -18,6 +18,8 @@ from usedock import (
     ConnectorAdminOnlyError,
     ConnectorNotConnectedError,
     ConnectorNotFoundError,
+    ConnectorTokenInvalidError,
+    ConnectorUnreachableError,
     Dock,
     DockError,
     DockState,
@@ -531,6 +533,7 @@ CONNECTOR = {
     "status": "connected",
     "accountLabel": "Acme",
     "scopes": ["read"],
+    "credentialType": "personal_token",
     "oauthAvailable": False,
     "readOnly": False,
     "updatedAt": "2026-01-01T00:00:00.000Z",
@@ -557,6 +560,12 @@ def test_connectors_list() -> None:
     assert items[0].scopes == ["read"]
     assert items[0].read_only is False
     assert items[0].raw["type"] == "tool"
+    assert items[0].credential_type == "personal_token"
+
+
+def test_connector_credential_type_defaults_to_none() -> None:
+    client, _ = recorder(ok([{**CONNECTOR, "status": "not_connected", "credentialType": None}]))
+    assert client.connectors.list("w")[0].credential_type is None
 
 
 def test_connectors_connect_and_disconnect() -> None:
@@ -643,6 +652,8 @@ def test_images_list() -> None:
     [
         ("connector_not_connected", 409, ConnectorNotConnectedError),
         ("connector_admin_only", 403, ConnectorAdminOnlyError),
+        ("connector_token_invalid", 400, ConnectorTokenInvalidError),
+        ("connector_unreachable", 502, ConnectorUnreachableError),
         ("image_unknown", 400, ImageUnknownError),
         ("image_unavailable", 400, ImageUnavailableError),
         ("port_not_found", 404, PortNotFoundError),
@@ -696,3 +707,84 @@ def test_files_read_list_over_command_limit_raise_before_sending(op: str) -> Non
         getattr(client.docks.files, op)("d1", path)
     assert (info.value.code, info.value.status) == ("file_too_large", 0)
     assert len(seen) == 0
+
+
+ENVIRONMENT = {
+    "id": "e1",
+    "organizationId": "o1",
+    "name": "base",
+    "isDefault": True,
+    "currentVersion": 3,
+    "secretsAccess": "admins",
+    "providerKeys": "gateway",
+    "egressAllow": None,
+}
+
+
+def test_environments_list_and_get_read_provider_keys() -> None:
+    client, seen = recorder(ok([ENVIRONMENT]))
+    envs = client.environments.list("o 1")
+    assert (seen[0].method, seen[0].url.path, seen[0].url.params["organizationId"]) == (
+        "GET",
+        "/v1/environments",
+        "o 1",
+    )
+    assert envs[0].provider_keys == "gateway"
+    client, seen = recorder(ok(ENVIRONMENT))
+    env = client.environments.get("base", organization_id="o1")
+    assert (seen[0].url.path, seen[0].url.params["organizationId"]) == (
+        "/v1/environments/base",
+        "o1",
+    )
+    assert env.provider_keys == "gateway"
+    assert env.egress_allow is None
+
+
+def test_environments_update_sends_provider_keys() -> None:
+    client, seen = recorder(ok({**ENVIRONMENT, "providerKeys": "plain"}))
+    env = client.environments.update("base", organization_id="o1", provider_keys="plain")
+    assert (seen[0].method, seen[0].url.path) == ("PATCH", "/v1/environments/base")
+    assert body_of(seen[0]) == {"providerKeys": "plain"}
+    assert env.provider_keys == "plain"
+
+
+def test_environments_update_egress_allow_null_clears() -> None:
+    client, seen = recorder(ok(ENVIRONMENT))
+    client.environments.update("base", egress_allow=None)
+    assert body_of(seen[0]) == {"egressAllow": None}
+
+
+def test_environment_reads_posture_fields() -> None:
+    data = {
+        **ENVIRONMENT,
+        "safeForThirdParties": True,
+        "passGithub": True,
+        "passSecrets": False,
+        "passDockCredentials": True,
+        "passAgentsCredentials": True,
+        "egressAllow": ["api.example.com"],
+        "varNames": ["A", "B"],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-02T00:00:00.000Z",
+    }
+    client, _ = recorder(ok(data))
+    env = client.environments.get("e1")
+    assert (
+        env.safe_for_third_parties,
+        env.pass_github,
+        env.pass_secrets,
+        env.pass_dock_credentials,
+        env.pass_agents_credentials,
+    ) == (True, True, False, True, True)
+    assert env.egress_allow == ["api.example.com"]
+    assert env.var_names == ["A", "B"]
+    assert (env.created_at, env.updated_at) == (
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-02T00:00:00.000Z",
+    )
+
+
+def test_environments_update_sends_posture_and_egress_list() -> None:
+    client, seen = recorder(ok(ENVIRONMENT))
+    client.environments.update("e1", pass_github=False, egress_allow=["api.example.com"])
+    assert body_of(seen[0]) == {"passGithub": False, "egressAllow": ["api.example.com"]}
