@@ -9,7 +9,16 @@ from urllib.parse import quote
 import httpx
 
 from .errors import DockError, error_for
-from .models import Connector, ConnectorState, DockInfo, DockState, ExecResult, Image, Operation
+from .models import (
+    Connector,
+    ConnectorState,
+    DockInfo,
+    DockState,
+    ExecResult,
+    Image,
+    Operation,
+    Port,
+)
 
 DEFAULT_BASE_URL = "https://api.usedock.io"
 
@@ -139,6 +148,7 @@ class Docks:
     def __init__(self, client: Dock) -> None:
         self._c = client
         self.files = Files(self)
+        self.ports = Ports(self)
 
     def create(
         self,
@@ -302,6 +312,32 @@ class Docks:
             headers={"x-confirm-delete": dock_id},
         )
         return Operation.from_dict(data["operation"])
+
+
+class Ports:
+    """Exposed dock ports. New ports are ``private``; ``public`` opens the URL to anyone."""
+
+    def __init__(self, docks: Docks) -> None:
+        self._c = docks._c
+
+    def list(self, dock_id: str) -> List[Port]:
+        data = self._c._request("GET", f"/v1/docks/{_seg(dock_id)}/ports")
+        return [Port.from_dict(d) for d in data]
+
+    def expose(self, dock_id: str, port: int, *, visibility: Optional[str] = None) -> Port:
+        """Expose ``port`` (``visibility`` ``"public"`` or ``"private"``, default private for a
+        new port). Exposing it again returns the same URL; passing ``visibility`` then
+        changes it, and omitting it keeps the current one."""
+        data = self._c._request(
+            "POST",
+            f"/v1/docks/{_seg(dock_id)}/ports",
+            body=_body(port=port, visibility=visibility),
+        )
+        return Port.from_dict(data)
+
+    def remove(self, dock_id: str, port: int) -> None:
+        """Unexpose ``port``; raises ``port_not_found`` (404) when it is not exposed."""
+        self._c._request("DELETE", f"/v1/docks/{_seg(dock_id)}/ports/{int(port)}")
 
 
 class Files:

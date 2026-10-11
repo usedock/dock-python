@@ -34,7 +34,7 @@ with Dock() as client:  # reads DOCK_API_KEY and DOCK_API_URL
 ```
 
 Methods on `client.docks`: `create`, `list`, `get`, `update`, `exec`, `stop`,
-`resume`, `branch`, `delete`, and `files.write` / `files.read` / `files.read_bytes` / `files.list`.
+`resume`, `branch`, `delete`, `ports.list` / `ports.expose` / `ports.remove`, and `files.write` / `files.read` / `files.read_bytes` / `files.list`.
 `client.operations.get(id)` polls an operation. `client.connectors` and `client.images` are described below. Create, stop, resume and branch
 return when the change is done. Sizes use `cpus`, `memory_mib`, `disk_gib`.
 
@@ -72,6 +72,21 @@ same statuses for the codes they share (`file_not_utf8` is Python only):
 | `file_command_failed` | the command exits non-zero (the message carries stderr) |
 | `output_truncated` | the API clipped the output at 1 MiB (for example a read of a file over about 768 KB), so partial content is never returned |
 | `file_not_utf8` | `files.read` got bytes that are not valid UTF-8 |
+
+## Ports
+
+New ports are private: the URL needs a dock-bound API key or an organization
+member's sign-in. Pass `visibility="public"` to open it to anyone with the URL.
+
+```python
+port = client.docks.ports.expose(dock.id, 3000)  # Port(port, visibility="private", url, created_at)
+client.docks.ports.expose(dock.id, 3000, visibility="public")  # exposing again changes it
+print(client.docks.ports.list(dock.id))
+client.docks.ports.remove(dock.id, 3000)
+```
+
+`url` is `None` while hosted ports are off. Leaving `visibility` out of a repeat
+`expose` keeps the port's current visibility.
 
 ## Connectors and images
 

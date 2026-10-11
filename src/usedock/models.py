@@ -178,3 +178,25 @@ class Image:
             available=bool(data.get("available", False)),
             raw=data,
         )
+
+
+@dataclass
+class Port:
+    """An exposed dock port. ``visibility`` is ``public`` or ``private``; ``url`` is
+    ``None`` while hosted ports are off on the deployment."""
+
+    port: int
+    visibility: str
+    url: Optional[str] = None
+    created_at: Optional[str] = None
+    raw: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Port:
+        return cls(
+            port=_opt_int(data, "port") or 0,
+            visibility=_str(data, "visibility"),
+            url=_opt_str(data, "url"),
+            created_at=_opt_str(data, "createdAt"),
+            raw=data,
+        )
