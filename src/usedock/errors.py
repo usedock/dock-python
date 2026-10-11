@@ -39,12 +39,27 @@ class ImageUnavailableError(DockError):
     """``image_unavailable`` (400): the image is in the catalog but no host serves it right now."""
 
 
+class PortNotFoundError(DockError):
+    """``port_not_found`` (404): closing a port that is not exposed."""
+
+
+class PortLimitReachedError(DockError):
+    """``port_limit_reached`` (409): a dock already exposes the maximum of 10 ports."""
+
+
+class PortsUnavailableError(DockError):
+    """``ports_unavailable`` (503): hosted ports are not configured on this deployment."""
+
+
 _BY_CODE: Dict[str, Type[DockError]] = {
     "connector_not_connected": ConnectorNotConnectedError,
     "connector_admin_only": ConnectorAdminOnlyError,
     "connector_not_found": ConnectorNotFoundError,
     "image_unknown": ImageUnknownError,
     "image_unavailable": ImageUnavailableError,
+    "port_not_found": PortNotFoundError,
+    "port_limit_reached": PortLimitReachedError,
+    "ports_unavailable": PortsUnavailableError,
 }
 
 

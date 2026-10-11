@@ -6,6 +6,9 @@ from .errors import (
     DockError,
     ImageUnavailableError,
     ImageUnknownError,
+    PortLimitReachedError,
+    PortNotFoundError,
+    PortsUnavailableError,
 )
 from .models import (
     Connector,
@@ -36,4 +39,7 @@ __all__ = [
     "ImageUnknownError",
     "Operation",
     "Port",
+    "PortLimitReachedError",
+    "PortNotFoundError",
+    "PortsUnavailableError",
 ]
