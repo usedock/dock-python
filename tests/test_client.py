@@ -23,6 +23,9 @@ from usedock import (
     DockState,
     ImageUnavailableError,
     ImageUnknownError,
+    PortLimitReachedError,
+    PortNotFoundError,
+    PortsUnavailableError,
 )
 from usedock.client import MAX_COMMAND_BYTES, shell_quote
 
@@ -642,6 +645,9 @@ def test_images_list() -> None:
         ("connector_admin_only", 403, ConnectorAdminOnlyError),
         ("image_unknown", 400, ImageUnknownError),
         ("image_unavailable", 400, ImageUnavailableError),
+        ("port_not_found", 404, PortNotFoundError),
+        ("port_limit_reached", 409, PortLimitReachedError),
+        ("ports_unavailable", 503, PortsUnavailableError),
     ],
 )
 def test_new_error_codes_raise_typed_errors(code: str, status: int, cls: type) -> None:

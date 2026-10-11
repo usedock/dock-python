@@ -129,7 +129,13 @@ Some codes raise a subclass of `DockError`, so you can catch them directly:
 `ConnectorNotConnectedError` (`connector_not_connected`, 409),
 `ConnectorAdminOnlyError` (`connector_admin_only`, 403),
 `ConnectorNotFoundError` (`connector_not_found`, 404), `ImageUnknownError`
-(`image_unknown`, 400) and `ImageUnavailableError` (`image_unavailable`, 400).
+(`image_unknown`, 400), `ImageUnavailableError` (`image_unavailable`, 400),
+`PortNotFoundError` (`port_not_found`, 404), `PortLimitReachedError`
+(`port_limit_reached`, 409) and `PortsUnavailableError` (`ports_unavailable`,
+503).
+
+Port 2222 is reserved for the dock agent and is rejected with
+`validation_error`. A dock can expose at most 10 ports.
 
 ## Configuration
 
