@@ -34,7 +34,8 @@ def is_safe_windows_bash(path: str) -> bool:
     segs = norm.split("\\")[1:]
     # Windows drops `.`/`..`, empty and trailing-dot segments and expands 8.3 names (WINDOW~1),
     # so only plain segments are accepted or the System32/WindowsApps check could be bypassed.
-    if any(s == "" or s.endswith((".", " ")) or "~" in s for s in segs):
+    # A `:` after the drive letter is an NTFS stream suffix (System32::$INDEX_ALLOCATION).
+    if any(s == "" or s.endswith((".", " ")) or "~" in s or ":" in s for s in segs):
         return False
     if re.search(r"\\windows\\(system32|sysnative|syswow64)\\", norm):
         return False

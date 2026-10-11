@@ -64,6 +64,14 @@ def test_accepts_safe_override() -> None:
         "C:\\Windows\\System32\\..\\System32\\bash.exe",
         "C:\\Users\\me\\AppData\\Local\\Microsoft\\WINDOW~1\\bash.exe",
         "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps \\bash.exe",
+        "C:\\Windows\\System32::$INDEX_ALLOCATION\\bash.exe",
+        "C:\\Windows\\System32:$I30:$INDEX_ALLOCATION\\bash.exe",
+        "C:\\Windows::$INDEX_ALLOCATION\\System32\\bash.exe",
+        "C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps::$INDEX_ALLOCATION\\bash.exe",
+        "\\\\?\\C:\\Windows\\System32\\bash.exe",
+        "\\\\.\\C:\\Windows\\System32\\bash.exe",
+        "//?/C:/Windows/System32/bash.exe",
+        "\\\\localhost\\C$\\Windows\\System32\\bash.exe",
     ],
 )
 def test_rejects_unsafe_override_without_falling_back(p: str) -> None:
