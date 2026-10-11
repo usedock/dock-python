@@ -15,7 +15,8 @@ DEFAULT_BASE_URL = "https://api.usedock.io"
 
 # One exec command is capped at 64 KB; base64 inflates content by 4/3, so a
 # write can never exceed 48 KB. The real limit is the whole command (content
-# plus the quoted path, twice, plus the template), checked in ``Files.write``.
+# plus the quoted path, twice, plus the template); ``Files.write`` raises
+# ``DockError("file_too_large")`` before sending when it is over.
 MAX_WRITE_BYTES = 48 * 1024
 MAX_COMMAND_BYTES = 64 * 1024
 
@@ -312,17 +313,18 @@ class Files:
 
     def write(self, dock_id: str, path: str, content: Union[str, bytes]) -> str:
         raw = content.encode("utf-8") if isinstance(content, str) else content
-        if len(raw) > MAX_WRITE_BYTES:
-            raise ValueError(
-                f"content is {len(raw)} bytes; one write is limited to {MAX_WRITE_BYTES}"
-            )
         q = shell_quote(path)
         encoded = base64.b64encode(raw).decode("ascii")
-        command = f"mkdir -p -- \"$(dirname -- {q})\" && printf '%s' '{encoded}' | base64 -d > {q}"
+        command = (
+            f'd=$(dirname -- {q}; echo x) && mkdir -p -- "${{d%??}}" && '
+            f"printf '%s' '{encoded}' | base64 -d > {q}"
+        )
         if len(command.encode("utf-8")) > MAX_COMMAND_BYTES:
-            raise ValueError(
-                f"content is {len(raw)} bytes; with this path the exec command would exceed "
-                f"{MAX_COMMAND_BYTES} bytes (about 48 KB of content minus the path)"
+            raise DockError(
+                "file_too_large",
+                0,
+                f"write {path}: content is {len(raw)} bytes; with this path the exec command "
+                f"would exceed {MAX_COMMAND_BYTES} bytes (about 48 KB of content minus the path)",
             )
         self._run(dock_id, command, f"write {path}")
         return path
@@ -341,8 +343,17 @@ class Files:
             ) from exc
 
     def list(self, dock_id: str, path: str) -> List[str]:
-        result = self._run(dock_id, f"ls -1A -- {shell_quote(path)}", f"list {path}")
-        return [line for line in result.stdout.split("\n") if line]
+        command = (
+            f'p={shell_quote(path)} && case $p in /*) ;; *) p=./$p ;; esac && test -d "$p" && '
+            'find -H "$p" -mindepth 1 -maxdepth 1 -exec sh -c '
+            '\'for f; do printf "%s" "${f##*/}" | base64 -w0; echo; done\' sh {} +'
+        )
+        result = self._run(dock_id, command, f"list {path}")
+        return [
+            base64.b64decode(line).decode("utf-8", errors="replace")
+            for line in result.stdout.split("\n")
+            if line
+        ]
 
 
 class Operations:
