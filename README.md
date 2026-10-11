@@ -25,6 +25,7 @@ Then run the example below with your workspace ID.
 
 ![dock quickstart: install, dock doctor, dock new api, dock exec, dock branch, dock ls](https://raw.githubusercontent.com/usedock/docklet/main/docs/assets/quickstart.gif)
 
+
 The first `dock new` downloads the image; the recording skips that wait.
 
 Docs: [SDKs](https://docs.usedock.io/sdks), [quickstart](https://docs.usedock.io/quickstart), [API](https://docs.usedock.io/api), [self-hosting](https://docs.usedock.io/self-hosting).
