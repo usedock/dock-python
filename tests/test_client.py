@@ -3,7 +3,6 @@ import copy
 import json
 import os
 import pickle
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +11,7 @@ from typing import Any, Callable, Dict, List, Tuple
 import httpx
 import pytest
 
+from bash_resolver import resolve_bash
 from usedock import MAX_WRITE_BYTES, UNSET, Dock, DockError, DockState
 from usedock.client import MAX_COMMAND_BYTES, shell_quote
 
@@ -315,8 +315,11 @@ def test_files_truncated_output_is_error() -> None:
     assert info2.value.code == "output_truncated"
 
 
+BASH, BASH_SKIP_REASON = resolve_bash()
+
+
 def _bash_supports_helpers() -> bool:
-    bash = shutil.which("bash")
+    bash = BASH
     if not bash:
         return False
     probe = subprocess.run(
@@ -327,7 +330,8 @@ def _bash_supports_helpers() -> bool:
 
 
 needs_bash = pytest.mark.skipif(
-    not _bash_supports_helpers(), reason="needs bash with GNU base64 and find"
+    not _bash_supports_helpers(),
+    reason=BASH_SKIP_REASON or "needs bash with GNU base64 and find",
 )
 
 HOSTILE_NAMES = [
@@ -343,7 +347,7 @@ HOSTILE_NAMES = [
 
 
 def bash_client(cwd: Path) -> Dock:
-    bash = shutil.which("bash")
+    bash = BASH
     assert bash
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -377,7 +381,7 @@ def test_files_hostile_names_round_trip_in_bash(tmp_path: Path, name: str) -> No
     # Absolute path.
     # (the root comes from bash itself: on Windows a C:/ path is not absolute to it).
     root = subprocess.run(
-        [shutil.which("bash") or "bash", "-c", "pwd"], cwd=tmp_path, capture_output=True, text=True
+        [str(BASH), "-c", "pwd"], cwd=tmp_path, capture_output=True, text=True
     ).stdout.strip()
     files.write("d1", f"{root}/{name}/abs", "x")
     assert files.read("d1", f"{root}/{name}/abs") == "x"
