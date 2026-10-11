@@ -23,7 +23,12 @@ class ConnectorNotConnectedError(DockError):
 
 
 class ConnectorAdminOnlyError(DockError):
-    """``connector_admin_only`` (403): only workspace admins can do this with connectors."""
+    """``connector_admin_only`` (403): only organization admins can launch or open docks
+    that use connectors."""
+
+
+class ConnectorNotFoundError(DockError):
+    """``connector_not_found`` (404): disconnecting a connector that is not connected."""
 
 
 class ImageUnknownError(DockError):
@@ -37,6 +42,7 @@ class ImageUnavailableError(DockError):
 _BY_CODE: Dict[str, Type[DockError]] = {
     "connector_not_connected": ConnectorNotConnectedError,
     "connector_admin_only": ConnectorAdminOnlyError,
+    "connector_not_found": ConnectorNotFoundError,
     "image_unknown": ImageUnknownError,
     "image_unavailable": ImageUnavailableError,
 }

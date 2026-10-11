@@ -2,6 +2,7 @@ from .client import MAX_WRITE_BYTES, UNSET, Dock
 from .errors import (
     ConnectorAdminOnlyError,
     ConnectorNotConnectedError,
+    ConnectorNotFoundError,
     DockError,
     ImageUnavailableError,
     ImageUnknownError,
@@ -22,6 +23,7 @@ __all__ = [
     "Connector",
     "ConnectorAdminOnlyError",
     "ConnectorNotConnectedError",
+    "ConnectorNotFoundError",
     "ConnectorState",
     "Dock",
     "DockError",

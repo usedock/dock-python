@@ -17,6 +17,7 @@ from usedock import (
     UNSET,
     ConnectorAdminOnlyError,
     ConnectorNotConnectedError,
+    ConnectorNotFoundError,
     Dock,
     DockError,
     DockState,
@@ -574,6 +575,17 @@ def test_new_error_codes_raise_typed_errors(code: str, status: int, cls: type) -
         client.docks.create(workspace_id="w")
     assert isinstance(info.value, DockError)
     assert (info.value.code, info.value.status) == (code, status)
+
+
+def test_disconnect_not_connected_raises_connector_not_found() -> None:
+    client, _ = recorder(
+        httpx.Response(
+            404, json={"ok": False, "code": "connector_not_found", "message": "Connector not found"}
+        )
+    )
+    with pytest.raises(ConnectorNotFoundError) as info:
+        client.connectors.disconnect("w", "slack")
+    assert (info.value.code, info.value.status) == ("connector_not_found", 404)
 
 
 def test_other_codes_stay_plain_dock_error() -> None:

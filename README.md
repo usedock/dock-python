@@ -67,8 +67,8 @@ File helpers raise `DockError` (status 0) with these codes:
 
 ## Connectors and images
 
-Connect a workspace to a tool once (workspace admins only), then attach it to
-docks by kind. Tokens are never returned.
+Connect a workspace to a tool once (organization admins only; members get
+`forbidden`), then attach it to docks by kind. Tokens are never returned.
 
 ```python
 client.connectors.connect(workspace_id, "linear", token="lin_api_...")
@@ -104,7 +104,8 @@ except DockError as err:
 
 Some codes raise a subclass of `DockError`, so you can catch them directly:
 `ConnectorNotConnectedError` (`connector_not_connected`, 409),
-`ConnectorAdminOnlyError` (`connector_admin_only`, 403), `ImageUnknownError`
+`ConnectorAdminOnlyError` (`connector_admin_only`, 403),
+`ConnectorNotFoundError` (`connector_not_found`, 404), `ImageUnknownError`
 (`image_unknown`, 400) and `ImageUnavailableError` (`image_unavailable`, 400).
 
 ## Configuration
