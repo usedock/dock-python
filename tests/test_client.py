@@ -621,3 +621,23 @@ def test_other_codes_stay_plain_dock_error() -> None:
     with pytest.raises(DockError) as info:
         client.docks.get("d")
     assert type(info.value) is DockError
+
+
+def test_resume_ttl_unset_null_and_number() -> None:
+    client, seen = recorder(ok(DOCK, 202))
+    client.docks.resume("d1")
+    client.docks.resume("d1", ttl_seconds=None)
+    client.docks.resume("d1", ttl_seconds=600, cpus=2)
+    assert body_of(seen[0]) == {}
+    assert body_of(seen[1]) == {"ttlSeconds": None}
+    assert body_of(seen[2]) == {"cpus": 2, "ttlSeconds": 600}
+
+
+@pytest.mark.parametrize("op", ["read", "read_bytes", "list"])
+def test_files_read_list_over_command_limit_raise_before_sending(op: str) -> None:
+    client, seen = recorder(exec_ok())
+    path = "/w/" + "é" * 40000  # multibyte: UTF-8 bytes, not characters, are counted
+    with pytest.raises(DockError) as info:
+        getattr(client.docks.files, op)("d1", path)
+    assert (info.value.code, info.value.status) == ("file_too_large", 0)
+    assert len(seen) == 0
